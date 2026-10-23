@@ -7,7 +7,6 @@ import type { ObjectStore } from "./store";
 import { DEFAULT_ENV, fogUniforms, groundUniforms, sunAt, withFog, type Environment } from "./env";
 import { Post } from "./post";
 import { toThree } from "./transform";
-import { Clutter, type ClutterItem } from "./clutter";
 
 // Cells on each side of one terrain chunk at full detail.
 const CHUNK = 256;
@@ -109,12 +108,18 @@ vTUv = vec2(tm.x / (float(uSize.x) * uCell), 1.0 - tm.y / (float(uSize.y) * uCel
 // uIds holds the layer of each mask texel (255: none). The 4 nearest texels blend, so the layer borders are soft.
 // The fade distances are viewport settings (default 10 m to 65 m, as in Arma). shortcut: the scale (texture layer size / repeat of the layer RVMAT) is assumed, not checked in the game.
 const DETAIL_MAX = 10;
+// Mid detail texture (midDetailTexture of the world): one tile is MID_TILE meters, it fades out between the MID_FADE distances.
+// shortcut: the tile size and the fade are guesses, not measured in the game. Make them settings if they look wrong.
+const MID_TILE = 40;
+const MID_FADE = [800, 2000];
 const DETAIL_COMMON = /* glsl */ `
 uniform float uDetailOn;
 uniform sampler2D uIds;
 uniform float uDetailScale;
 uniform float uDiffuse;
 uniform vec2 uDetailFade;
+uniform sampler2D uMid;
+uniform float uMidOn;
 ${Array.from({ length: DETAIL_MAX }, (_, i) => `uniform sampler2D uL${i};`).join("\n")}
 varying vec2 vWorld;
 vec3 layerColor(int id, vec2 uv, vec2 gx, vec2 gy) {
@@ -122,6 +127,11 @@ ${Array.from({ length: DETAIL_MAX }, (_, i) => `	if (id == ${i}) return textureG
 	return vec3(-1.0);
 }`;
 const DETAIL_COLOR = /* glsl */ `
+if (uDetailOn > 0.5 && uMidOn > 0.5) {
+	// Mid detail: an overlay on the satellite image, 0.5 grey changes nothing (x 2 in gamma space is x 2^2.2 in linear space).
+	float mf = 1.0 - smoothstep(${MID_FADE[0].toFixed(1)}, ${MID_FADE[1].toFixed(1)}, length(vViewPosition));
+	base *= mix(vec3(1.0), texture(uMid, vWorld / ${MID_TILE.toFixed(1)}).rgb * 4.595, mf);
+}
 if (uDetailOn > 0.5) {
 	float fade = 1.0 - smoothstep(uDetailFade.x, uDetailFade.y, length(vViewPosition));
 	if (fade > 0.0) {
@@ -159,6 +169,8 @@ const detailUniforms: Record<string, THREE.IUniform> = {
 	uDetailScale: { value: 5 / 64 },
 	uDiffuse: { value: 1 },
 	uDetailFade: { value: new THREE.Vector2(10, 65) },
+	uMid: { value: greyLayer },
+	uMidOn: { value: 0 },
 	...Object.fromEntries(Array.from({ length: DETAIL_MAX }, (_, i) => [`uL${i}`, { value: greyLayer }])),
 };
 
@@ -269,14 +281,6 @@ export class Viewer {
 	private maskAlpha = 0;
 	private preview?: THREE.Points;
 	private objects = new THREE.Group();
-	private clutter = new Clutter({
-		heightAt: (x, y) => this.meshHeightAt(x, y),
-		ids: () => {
-			const t = this.terrain;
-			const img = (detailUniforms.uIds.value as THREE.DataTexture).image;
-			return t && img.data ? { w: img.width, h: img.height, data: img.data as Uint8Array, size: t.ncols * t.cell } : null;
-		},
-	});
 	// Sea at 0 m (Arma 3 sea level). A square of 5 map sizes around the map, transparent so that the ground below shows.
 	private sea = new THREE.Mesh(
 		new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
@@ -323,7 +327,7 @@ export class Viewer {
 		this.scene.background = new THREE.Color();
 		this.sun.castShadow = true;
 		this.sun.shadow.mapSize.set(4096, 4096);
-		this.scene.add(this.sun, this.sun.target, this.hemi, this.clutter.group);
+		this.scene.add(this.sun, this.sun.target, this.hemi);
 		this.post = new Post(this.renderer, this.scene, this.camera);
 		this.renderer.info.autoReset = false;
 		this.setEnvironment(DEFAULT_ENV);
@@ -380,7 +384,6 @@ export class Viewer {
 
 	setTerrain(t: Terrain) {
 		this.terrain = t;
-		this.clutter.dirty();
 		for (const c of this.chunks) this.scene.remove(c.mesh);
 		this.lods.forEach((g) => g.dispose());
 		this.heightTex?.dispose();
@@ -470,7 +473,6 @@ export class Viewer {
 		const t = this.terrain;
 		const tex = this.heightTex;
 		if (!t || !tex) return;
-		this.clutter.dirty();
 		const w = r[2] - r[0];
 		for (let row = r[1]; row < r[3]; row++) {
 			t.heights.set(v.subarray((row - r[1]) * w, (row - r[1] + 1) * w), row * t.ncols + r[0]);
@@ -561,8 +563,10 @@ export class Viewer {
 
 	// Ground detail: the _co texture of each layer (null: none), the scale (texture repeats for each meter), and the diffuse value.
 	// Null turns the detail off.
-	setDetail(d: { textures: (THREE.Texture | null)[]; scale: number; diffuse: number } | null) {
+	setDetail(d: { textures: (THREE.Texture | null)[]; scale: number; diffuse: number; mid: THREE.Texture | null } | null) {
 		for (let i = 0; i < DETAIL_MAX; i++) detailUniforms[`uL${i}`].value = d?.textures[i] ?? greyLayer;
+		detailUniforms.uMid.value = d?.mid ?? greyLayer;
+		detailUniforms.uMidOn.value = d?.mid ? 1 : 0;
 		this.detailReady = !!d;
 		if (d) {
 			detailUniforms.uDetailScale.value = d.scale;
@@ -591,13 +595,7 @@ export class Viewer {
 			}
 		}
 		tex.needsUpdate = true;
-		this.clutter.dirty();
 		this.redraw();
-	}
-
-	// Clutter of each ground detail layer (see clutter.ts), null for none. It shows with the ground detail.
-	setClutter(c: { layers: ClutterItem[][]; grid?: number | null } | null, lib?: ModelLibrary) {
-		this.clutter.set(c, lib);
 	}
 
 	// Show the layer mask over the terrain with an opacity from 0 to 1. Null removes it. The mask covers the terrain like the satellite image.
@@ -1019,8 +1017,6 @@ export class Viewer {
 		this.move(dt);
 		this.updateChunks();
 		this.updateObjects();
-		const p = this.camera.position;
-		this.clutter.update(p.x, -p.z, this.env.clutterEnd, this.detailReady && this.env.detail && !this.ortho);
 		this.updateSun();
 		// The post effects draw more than once in a frame, so the triangle count is reset here and not after each draw.
 		this.renderer.info.reset();

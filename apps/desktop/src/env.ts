@@ -21,11 +21,9 @@ export interface Environment {
 	detail: boolean;
 	detailStart: number;
 	detailEnd: number;
-	// Clutter of the ground detail layers (CfgSurfaces in the map config.cpp) to this distance in meters. It shows with the ground detail.
-	clutterEnd: number;
 }
 
-export const DEFAULT_ENV: Environment = { hour: 9, shadows: true, sun: 1, fogDensity: 0, fogBase: 0, fogDecay: 0, ao: true, bloom: true, sea: true, detail: true, detailStart: 10, detailEnd: 65, clutterEnd: 50 };
+export const DEFAULT_ENV: Environment = { hour: 9, shadows: true, sun: 1, fogDensity: 0, fogBase: 0, fogDecay: 0, ao: true, bloom: true, sea: true, detail: true, detailStart: 10, detailEnd: 65 };
 
 export const PRESETS: { name: string; icon: string; hour: number }[] = [
 	{ name: "Sunrise", icon: "sun-foggy-line", hour: 6 },

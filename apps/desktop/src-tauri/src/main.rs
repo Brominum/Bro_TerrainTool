@@ -105,11 +105,11 @@ struct LayerDetail {
 	repeat: f64,
 	/// Layers whose RVMAT did not load, with the reason.
 	missing: Vec<String>,
-	/// The clutter of each layer, from the config.cpp in the layers.cfg folder or a parent folder (none: no config.cpp).
-	clutter: Option<terrain_core::clutter::LayerClutter>,
+	/// The mid detail texture (midDetailTexture of the world in the map config.cpp, else the vanilla one).
+	mid: String,
 }
 
-/// The ground detail textures and the clutter of layers.cfg for the 3D view. The layer RVMAT files are found in the model folders.
+/// The ground detail textures of layers.cfg for the 3D view. The layer RVMAT files are found in the model folders.
 #[tauri::command]
 async fn layer_detail(layers_cfg: String, models: State<'_, Models>) -> Result<LayerDetail, String> {
 	let cfg = layers_cfg::parse(&std::fs::read_to_string(&layers_cfg).map_err(|e| format!("{layers_cfg}: {e}"))?).map_err(|e| format!("{layers_cfg}: {e}"))?;
@@ -124,23 +124,16 @@ async fn layer_detail(layers_cfg: String, models: State<'_, Models>) -> Result<L
 		})
 		.collect();
 	let first = mats.first().cloned().flatten();
-	let co: Vec<String> = mats.iter().map(|m| m.as_ref().map_or(String::new(), |m| m.co.clone())).collect();
-	// The map config.cpp is usually in the folder of layers.cfg (source\) or two folders up (the map root).
+	// The map config.cpp is in the folder of layers.cfg or in a parent folder (bro_laguna: data\Layers.cfg and config.cpp).
 	let config = Path::new(&layers_cfg).ancestors().skip(1).take(3).map(|d| d.join("config.cpp")).find(|p| p.is_file());
-	let files: Vec<Vec<String>> = co.iter().zip(&cfg.layers).map(|(c, l)| vec![c.clone(), l.material.clone()]).collect();
-	let clutter = match config {
-		Some(p) => match std::fs::read_to_string(&p).map_err(|e| e.to_string()).and_then(|t| terrain_core::clutter::layer_clutter(&t, &files)) {
-			Ok(c) => Some(c),
-			Err(e) => {
-				missing.push(format!("clutter: {} ({e})", p.display()));
-				None
-			}
-		},
-		None => None,
-	};
+	let mid = config
+		.and_then(|p| std::fs::read_to_string(p).ok())
+		.and_then(|t| terrain_core::cfg::parse(&t).ok())
+		.and_then(|c| c.class("CfgWorlds").and_then(|w| w.classes().filter_map(|w| w.str("midDetailTexture")).last().map(str::to_string)))
+		.unwrap_or_else(|| "a3\\map_data\\middle_mco.paa".into());
 	Ok(LayerDetail {
-		co,
-		clutter,
+		mid,
+		co: mats.iter().map(|m| m.as_ref().map_or(String::new(), |m| m.co.clone())).collect(),
 		palette: cfg.palette.iter().map(|p| p.1).collect(),
 		diffuse: first.as_ref().map_or(1.0, |m| m.diffuse),
 		repeat: first.as_ref().map_or(5.0, |m| m.repeat),
