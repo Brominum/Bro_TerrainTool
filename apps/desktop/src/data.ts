@@ -199,7 +199,7 @@ export const maskOpen = (path: string, layersCfg: string) => invoke<MaskInfo>("m
 // Close the open map in the core (see reset_state in main.rs).
 export const dirExists = (path: string) => invoke<boolean>("dir_exists", { path });
 export const resetState = () => invoke<void>("reset_state");
-export const layerDetail = (layersCfg: string) => invoke<{ co: string[]; palette: number[]; diffuse: number; repeat: number; missing: string[]; mid: string; clutter: { layers: ClutterItem[][]; grid: number | null } | null }>("layer_detail", { layersCfg });
+export const layerDetail = (layersCfg: string) => invoke<{ co: string[]; palette: number[]; diffuse: number; repeat: number; missing: string[]; mid: string; water: number[] | null; clutter: { layers: ClutterItem[][]; grid: number | null } | null }>("layer_detail", { layersCfg });
 export const maskRegion = async (level: number, x: number, y: number, w: number, h: number) => new Uint8Array(await invoke<ArrayBuffer>("mask_region", { level, x, y, w, h }));
 // Color -1 is erase (back to the imported mask).
 // Lines through the points. One point paints one dab.

@@ -8,6 +8,7 @@ import { DEFAULT_ENV, fogUniforms, groundUniforms, sunAt, withFog, type Environm
 import { Post } from "./post";
 import { toThree } from "./transform";
 import { Clutter, type ClutterItem } from "./clutter";
+import { SEA_COLOR, waterMaterial, waterUniforms } from "./water";
 
 // Cells on each side of one terrain chunk at full detail.
 const CHUNK = 256;
@@ -294,12 +295,16 @@ export class Viewer {
 			return t && img.data ? { w: img.width, h: img.height, data: img.data as Uint8Array, size: t.ncols * t.cell } : null;
 		},
 	});
-	// Sea at 0 m (Arma 3 sea level). A square of 5 map sizes around the map, transparent so that the ground below shows.
-	private sea = new THREE.Mesh(
-		new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
-		// It writes depth: the ambient occlusion then sees the flat water, not the ground below it (that made the water flicker).
-		withFog(new THREE.MeshLambertMaterial({ color: 0x1f5a85, transparent: true, opacity: 0.55 })),
-	);
+	// Sea at 0 m (Arma 3 sea level). A square of 5 map sizes around the map, transparent so that the ground below shows (see water.ts).
+	// It writes depth: the ambient occlusion then sees the flat water, not the ground below it (that made the water flicker).
+	private sea = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), waterMaterial());
+
+	// Sea color (r, g, b from 0 to 1, as in the config), null for the default.
+	setWaterColor(rgb: number[] | null) {
+		const c = this.sea.material.color;
+		if (rgb) c.setRGB(rgb[0], rgb[1], rgb[2], THREE.SRGBColorSpace);
+		else c.set(SEA_COLOR);
+	}
 	private store?: ObjectStore;
 	private lib?: ModelLibrary;
 	private groups = new Map<number, ObjectGroup>();
@@ -1036,6 +1041,7 @@ export class Viewer {
 		this.last = now;
 		if (this.paused) return;
 		this.move(dt);
+		waterUniforms.uTime.value = now / 1000;
 		this.updateChunks();
 		this.updateObjects();
 		const p = this.camera.position;

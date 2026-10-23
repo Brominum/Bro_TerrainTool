@@ -151,8 +151,22 @@ fn num(x: f64) -> String {
 	}
 }
 
+/// The color of a procedural texture, for example `#(argb,8,8,3)color(0.35,0.47,0.66,1)`: r, g, b (0 to 1). None for a file.
+pub fn proc_color(texture: &str) -> Option<[f64; 3]> {
+	let s = texture.trim().to_ascii_lowercase();
+	let args = s.strip_prefix('#')?.split("color(").nth(1)?.split(')').next()?;
+	let v: Vec<f64> = args.split(',').take(3).map(|x| x.trim().parse().ok()).collect::<Option<_>>()?;
+	(v.len() == 3).then(|| [v[0], v[1], v[2]])
+}
+
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn proc_color() {
+		assert_eq!(super::proc_color("#(argb,8,8,3)color(0.35,0.47,0.66,1)"), Some([0.35, 0.47, 0.66]));
+		assert_eq!(super::proc_color("#(rgb,1,1,1)color(0.5,0.5,0.5,1,cdt)"), Some([0.5, 0.5, 0.5]));
+		assert_eq!(super::proc_color("a3\\data\\water_co.paa"), None);
+	}
 	use super::*;
 	#[test]
 	fn reads_render_flags() {

@@ -713,6 +713,7 @@ export function App() {
 		paletteLayer.current = null;
 		v.setDetail(null);
 		v.setClutter(null);
+		v.setWaterColor(null);
 		const cfg = cfgPath.current;
 		if (!mask || !library || !cfg) return;
 		(async () => {
@@ -728,6 +729,7 @@ export function App() {
 			if (typeof mid === "string") d.missing.push(`mid detail: ${d.mid} (${mid})`);
 			v.setDetail({ textures, scale: d.repeat / layerSize, diffuse: d.diffuse, mid: typeof mid === "string" ? null : mid });
 			v.setClutter(d.clutter, library);
+			v.setWaterColor(d.water);
 			await update3d(mask3d);
 			if (d.missing.length) setError(`Ground detail without: ${d.missing.join(", ")}`);
 		})().catch((e) => setError(String(e)));

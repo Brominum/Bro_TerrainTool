@@ -107,6 +107,8 @@ struct LayerDetail {
 	missing: Vec<String>,
 	/// The mid detail texture (midDetailTexture of the world in the map config.cpp, else the vanilla one).
 	mid: String,
+	/// The sea color (r, g, b, 0 to 1) from waterTexture of the world in the map config.cpp, when it is a procedural color.
+	water: Option<[f64; 3]>,
 	/// The clutter of each layer (CfgSurfaces in the map config.cpp), none without a config.cpp.
 	clutter: Option<terrain_core::clutter::LayerClutter>,
 }
@@ -129,17 +131,18 @@ async fn layer_detail(layers_cfg: String, models: State<'_, Models>) -> Result<L
 	// The map config.cpp is in the folder of layers.cfg or in a parent folder (bro_laguna: data\Layers.cfg and config.cpp).
 	let config = Path::new(&layers_cfg).ancestors().skip(1).take(3).map(|d| d.join("config.cpp")).find(|p| p.is_file());
 	let text = config.and_then(|p| std::fs::read_to_string(p).ok());
-	let mid = text
-		.as_deref()
-		.and_then(|t| terrain_core::cfg::parse(t).ok())
-		.and_then(|c| c.class("CfgWorlds").and_then(|w| w.classes().filter_map(|w| w.str("midDetailTexture")).last().map(str::to_string)))
-		.unwrap_or_else(|| "a3\\map_data\\middle_mco.paa".into());
+	let root = text.as_deref().and_then(|t| terrain_core::cfg::parse(t).ok());
+	// The last world class that sets the value (the map class comes after its parents).
+	let world = |k: &str| root.as_ref().and_then(|c| c.class("CfgWorlds")).and_then(|w| w.classes().filter_map(|w| w.str(k)).last().map(str::to_string));
+	let mid = world("midDetailTexture").unwrap_or_else(|| "a3\\map_data\\middle_mco.paa".into());
+	let water = world("waterTexture").and_then(|t| rvmat::proc_color(&t));
 	let co: Vec<String> = mats.iter().map(|m| m.as_ref().map_or(String::new(), |m| m.co.clone())).collect();
 	// A surface matches the _co texture or the RVMAT file name of a layer.
 	let files: Vec<Vec<String>> = co.iter().zip(&cfg.layers).map(|(c, l)| vec![c.clone(), l.material.clone()]).collect();
 	let clutter = text.and_then(|t| terrain_core::clutter::layer_clutter(&t, &files).map_err(|e| missing.push(format!("clutter: config.cpp ({e})"))).ok());
 	Ok(LayerDetail {
 		mid,
+		water,
 		clutter,
 		co,
 		palette: cfg.palette.iter().map(|p| p.1).collect(),
