@@ -85,6 +85,7 @@ export function App() {
 	const [cursor, setCursor] = useState<Cursor | null>(null);
 	const [stats, setStats] = useState({ fps: 0, tris: 0, drawn: 0 });
 	const [busy, setBusy] = useState("");
+	const busyOrNo = !inTauri || !!busy;
 	const [error, setError] = useState("");
 	const [showObjects, setShowObjects] = useState(true);
 	// Object draw distance in meters (10 to 10000), kept for the next start. All objects show up to it (a hard cut).
@@ -1099,7 +1100,6 @@ export function App() {
 		export: "Check the settings, then click Export.",
 	};
 	const se = shapeEd.current;
-	const busyOrNo = !inTauri || !!busy;
 	// The property panel shows only when the tab or the tool has settings.
 	const hasProps = stage === "terrain" || stage === "objects" || stage === "shapes" || stage === "imagery";
 	// The browser (left panel) holds the lists to pick from: models, layers, shapes, mask layers.
