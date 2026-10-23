@@ -44,10 +44,10 @@ export const Group = ({ label, children }: { label: string; children: ReactNode 
 
 // The ribbon tabs in the order of the work. Ctrl+1 to Ctrl+5 select them. The viewport settings are in a panel at the bottom.
 export const STAGES = [
-	{ id: "terrain", name: "Heightmap & imagery", icon: "landscape-line", help: "New map, DEM import, satellite and mask import, heightmap brushes" },
+	{ id: "terrain", name: "Map data", icon: "landscape-line", help: "Map folder, new map, import of the heightmap, satellite image, and mask, heightmap brushes" },
 	{ id: "objects", name: "Objects", icon: "tree-line", help: "Object import, placement, layers, object fill, and scatter brush" },
 	{ id: "shapes", name: "Shapes", icon: "road-map-line", help: "Roads, shapes, splines, and SHP files" },
-	{ id: "imagery", name: "Imagery", icon: "paint-brush-line", help: "Paint the mask and the satellite image" },
+	{ id: "imagery", name: "Paint", icon: "paint-brush-line", help: "Paint the mask and the satellite image" },
 	{ id: "export", name: "Export", icon: "upload-2-line", help: "Tiles, RVMAT files, WRP, and roads.shp for the game" },
 ] as const;
 export type Stage = (typeof STAGES)[number]["id"];

@@ -150,7 +150,7 @@ export function FillPanel({ ed, viewer, mask, shown, picked = [], onError, onDon
 	);
 	return (
 		<div className="fill">
-			{!mask && <div className="muted">Open a mask first (Heightmap & imagery tab, Mask).</div>}
+			{!mask && <div className="muted">Open a mask first (Map data tab, Mask).</div>}
 			{mask?.colors.map((c, i) => (
 				<label key={i} className="row">
 					<input type="checkbox" checked={colors.includes(i)} onChange={(e) => {

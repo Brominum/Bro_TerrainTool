@@ -1,4 +1,4 @@
-// Main window: the ribbon (tabs in the order of the work: Heightmap & imagery, Objects, Shapes, Imagery, Export, Viewport),
+// Main window: the ribbon (tabs in the order of the work: Map data, Objects, Shapes, Paint, Export, Viewport),
 // the 3D view or the 2D mask view, the property panel on the right (it shows the settings of the tab or the tool), and the status bar.
 // The project file saves all work.
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
-import { cancelJob, demoTerrain, newTerrain, heightExport, heightOffset, heightStampLoad, layerDetail, resetState, dirExists, loadAsc, loadProject, loadWrp, maskExport, maskOpen, maskRegion, parseAsc, parseDds, parseMesh, parseObjects, parsePicture, projectHeights, projectSave, projectSaved, readBytes, readText, satExport, satOpen, satRegion, satTexture, writeBytes, writeText, type MaskInfo, type Objects, type Project, type SatTool, type Terrain } from "./data";
+import { cancelJob, demoTerrain, pathsExist, newTerrain, heightExport, heightOffset, heightStampLoad, layerDetail, resetState, dirExists, loadAsc, loadProject, loadWrp, maskExport, maskOpen, maskRegion, parseAsc, parseDds, parseMesh, parseObjects, parsePicture, projectHeights, projectSave, projectSaved, readBytes, readText, satExport, satOpen, satRegion, satTexture, writeBytes, writeText, type MaskInfo, type Objects, type Project, type SatTool, type Terrain } from "./data";
 import { dataDir, join, storeFromBytes, storeToBytes, type ProjectFile } from "./project";
 import { HeightBrush, type TerrainTool } from "./heightbrush";
 import { Editor } from "./editor";
@@ -17,7 +17,7 @@ import { FillPanel, type Recipe } from "./FillPanel";
 import { ShapeEditor } from "./shapeview";
 import { ScatterBrush } from "./scatter";
 import { ShapesPanel } from "./ShapesPanel";
-import { defaultSettings, GameExport, type GameSettings } from "./GameExport";
+import { defaultSettings, folderName, folderPaths, GameExport, type GameSettings } from "./GameExport";
 import type { FillSettings } from "./data";
 import { Viewer, type Cursor } from "./viewer";
 import { MaskView, type MaskCursor, type MaskTool } from "./maskview";
@@ -107,7 +107,7 @@ export function App() {
 	const tbProject = useRef<Project>(null);
 	const [view, setView] = useState<"3d" | "terrain" | "shapes" | "mask">("3d");
 	const [stage, setStage] = useState<Stage>("terrain");
-	// Imagery tab: the 2D painter, or the 3D view with the mask and satellite on the terrain.
+	// Paint tab: the 2D painter, or the 3D view with the mask and satellite on the terrain.
 	const [surface2d, setSurface2d] = useState(true);
 	// Distance of "Clear objects" near the selected shapes (Shapes tab).
 	const [clearDist, setClearDist] = useState(5);
@@ -137,7 +137,7 @@ export function App() {
 	// The viewport panel at the bottom is open or folded (kept for the next start).
 	const [vpOpen, setVpOpen] = useState(() => pref("vpOpen", "0") === "1");
 	useEffect(() => setPref("vpOpen", vpOpen ? "1" : "0"), [vpOpen]);
-	// The Imagery tab in the 3D view paints in 3D.
+	// The Paint tab in the 3D view paints in 3D.
 	useEffect(() => {
 		if (paint3d.current) paint3d.current.enabled = stage === "imagery" && !surface2d;
 	}, [stage, surface2d]);
@@ -201,6 +201,38 @@ export function App() {
 	const [mask, setMask] = useState<MaskInfo>();
 	// Settings of "Export for game" (null: not set yet, the dialog makes them from the TB project). The project file keeps them.
 	const [game, setGame] = useState<GameSettings | null>(null);
+	// The map folder (the mod folder of the map). It gives layers.cfg, RoadsLib.cfg, and the export paths. The source images (heightmap,
+	// satellite image, mask) are not in it, because they are not packed with the map.
+	const [mapRoot, setMapRoot] = useState<string | null>(null);
+	// Each entry of mapFiles: the file or folder exists.
+	const [rootCheck, setRootCheck] = useState<boolean[]>([]);
+	const mapFiles = (root: string) => [
+		["config.cpp", "Map config (CfgWorlds, CfgSurfaces)"],
+		[`${folderName(root)}.wrp`, "WRP (the export writes it)"],
+		["data\\layers.cfg", "Layers of the mask"],
+		["data\\layers", "Layer tiles and RVMAT files (the export writes them)"],
+		["data\\roads\\roadslib.cfg", "Road types"],
+		["data\\satout_co.paa", "Texture outside the map"],
+		["picturemap_ca.paa", "Map picture of the editor"],
+		["icon_ca.paa", "Map icon"],
+	];
+	useEffect(() => {
+		setRootCheck([]);
+		if (mapRoot) pathsExist(mapFiles(mapRoot).map(([f]) => join(mapRoot, f))).then(setRootCheck, (e) => setError(String(e)));
+	}, [mapRoot]);
+	// A file of the map folder, when the folder is set and the file exists.
+	const rootFile = async (f: string, root = mapRoot) => (root && (await pathsExist([join(root, f)]))[0] ? join(root, f) : undefined);
+	const useMapRoot = async (root: string) => {
+		setMapRoot(root);
+		opened.current++;
+		setGame((g) => g && { ...g, ...folderPaths(root, folderName(root)) });
+		const lib = await rootFile("data\\roads\\roadslib.cfg", root);
+		if (lib && !shapeEd.current!.roadsPath) await shapeEd.current!.loadRoads(lib).catch((e) => setError(`RoadsLib.cfg: ${e}`));
+	};
+	const pickMapRoot = async () => {
+		const d = await open({ title: "Select the map folder (the folder with config.cpp and the data folder)", directory: true, multiple: false });
+		if (typeof d === "string") await useMapRoot(d);
+	};
 	// Progress of a long job in the core (0 to 1). 1: no job.
 	const [progress, setProgress] = useState(1);
 	useEffect(() => {
@@ -413,9 +445,10 @@ export function App() {
 			fills: st.fills,
 			shapes: st.shapes,
 			roadsLib: shapeEd.current!.roadsPath || undefined,
+			mapRoot: mapRoot ?? undefined,
 			gameExport: game ?? undefined,
 			activeLayer: ed.activeLayer,
-			settings: { relative, ground, overlay: maskView.current!.overlay, decimals },
+			settings: { relative, ground, overlay: maskView.current!.overlay, decimals, camera: viewer.current!.cameraState() },
 		};
 		await writeBytes(path, new TextEncoder().encode(JSON.stringify(p, null, "\t")));
 	};
@@ -481,8 +514,9 @@ export function App() {
 			const dir = dataDir(path);
 			if (p.files.heights) useTerrain(await projectHeights(dir));
 			if (p.files.satellite) await loadSat(join(dir, "satellite.png"));
+			setMapRoot(p.mapRoot ?? null);
 			if (p.files.mask) {
-				let cfg = p.layersCfg;
+				let cfg = p.layersCfg ?? (await rootFile("data\\layers.cfg", p.mapRoot ?? null));
 				let info: MaskInfo | undefined;
 				for (;;) {
 					try {
@@ -504,7 +538,8 @@ export function App() {
 			const ed = editor.current!;
 			await ed.setStore(store);
 			shapeEd.current!.selected = null;
-			if (p.roadsLib) await shapeEd.current!.loadRoads(p.roadsLib).catch((e) => setError(`RoadsLib.cfg: ${e}`));
+			const lib = p.roadsLib ?? (await rootFile("data\\roads\\roadslib.cfg", p.mapRoot ?? null));
+			if (lib) await shapeEd.current!.loadRoads(lib).catch((e) => setError(`RoadsLib.cfg: ${e}`));
 			shapeEd.current!.draw();
 			ed.activeLayer = store.layers[p.activeLayer] && !store.layers[p.activeLayer].deleted ? p.activeLayer : (store.shown()[0] ?? 0);
 			const set = p.settings ?? {};
@@ -513,8 +548,10 @@ export function App() {
 			if (set.ground === "sat" || set.ground === "mask" || set.ground === "both") setGround(set.ground);
 			if (typeof set.overlay === "number") maskView.current!.overlay = set.overlay;
 			if (typeof set.decimals === "string") setDecimals(set.decimals);
+			// The camera of the last save: the same place and view.
+			if (Array.isArray(set.camera)) viewer.current!.setCameraState(set.camera);
 			if (p.modelRoots?.length) setScanRequest(p.modelRoots);
-			setGame(p.gameExport ? { ...defaultSettings(null), ...p.gameExport } : null);
+			setGame(p.gameExport ? { ...defaultSettings(null, p.mapRoot), ...p.gameExport } : null);
 			await projectSaved(dir);
 			projectPath.current = path;
 			setProjectName(path.split(/[\\/]/).pop()!.replace(/\.ttproj$/i, ""));
@@ -639,7 +676,7 @@ export function App() {
 		};
 		const pickCfg = () => pick("Select layers.cfg", "layers.cfg", ["cfg"]);
 		const pickMask = () => pick("Select the source mask", "Mask image", ["png", "bmp"]);
-		let cfg = tbProject.current?.layersCfg || (await pickCfg());
+		let cfg = tbProject.current?.layersCfg || (await rootFile("data\\layers.cfg")) || (await pickCfg());
 		if (!cfg) return;
 		let path = tbProject.current?.mask || (await pickMask());
 		if (!path) return;
@@ -706,7 +743,7 @@ export function App() {
 	};
 	// Ground detail textures: the layer RVMAT files of layers.cfg give the _co textures (found in the model folders) and the repeat.
 	// The texture covers (texture layer size / repeat) meters, with the diffuse and repeat of the first layer (as the game export).
-	const layerSize = (game ?? defaultSettings(tbProject.current)).layerSize || 64;
+	const layerSize = (game ?? defaultSettings(tbProject.current, mapRoot)).layerSize || 64;
 	useEffect(() => {
 		const v = viewer.current;
 		if (!v) return;
@@ -819,7 +856,7 @@ export function App() {
 			const s = STAGES[Number(n[1]) - 1].id;
 			if (s !== "terrain" && !terrain) return;
 			e.preventDefault();
-			if (s === "export" && !game) setGame(defaultSettings(tbProject.current));
+			if (s === "export" && !game) setGame(defaultSettings(tbProject.current, mapRoot));
 			goStage(s);
 		};
 		window.addEventListener("keydown", key);
@@ -862,12 +899,12 @@ export function App() {
 			<Btn icon="file-download-line" disabled={!inTauri || !!busy || !coreHeights.current} onClick={exportAsc} title="Write the heightmap as an ASC with the header of the source">Export ASC</Btn>
 		</>
 	);
-	// Imagery tab: the mask layers and the brush settings.
-	// Imagery tab browser: the mask layers (the paint color of the mask brush).
+	// Paint tab: the mask layers and the brush settings.
+	// Paint tab browser: the mask layers (the paint color of the mask brush).
 	const maskBrowser = mv && (
 		<>
 			<b>Mask layers</b>
-			{!mask && <div className="muted">Open a mask in the Heightmap & imagery tab.</div>}
+			{!mask && <div className="muted">Open a mask in the Map data tab.</div>}
 			<div className="list mask-list">
 				{mask?.colors.map((c, i) => (
 					<div key={i} className={`row${mv.color === i ? " active" : ""}`} onClick={() => setMv({ color: i, tool: mv.tool === "erase" ? "brush" : mv.tool })} title={`Color ${c.join(", ")}`}>
@@ -1002,7 +1039,16 @@ export function App() {
 	}, [terrain, ed?.version]);
 	const projectPanel = (
 		<>
-			<b>New map</b>
+			<b>Map folder</b>
+			<div className="muted">The mod folder of the map (config.cpp, the WRP, and the data folder). It gives layers.cfg, RoadsLib.cfg, and the export paths. Select the heightmap, satellite image, and mask yourself: they are not in the map folder.</div>
+			<Btn icon="folder-settings-line" disabled={busyOrNo} onClick={pickMapRoot} title="Select the map folder, for example P:\\Bromine\\Bro_Appalachia">{mapRoot ? "Change the map folder" : "Select the map folder"}</Btn>
+			{mapRoot && <>
+				<div className="muted" title={mapRoot}>{mapRoot}</div>
+				{mapFiles(mapRoot).map(([f, help], i) => (
+					<div key={f} className="muted" title={help}><Icon name={rootCheck[i] ? "checkbox-circle-line" : "close-circle-line"} /> {f}{rootCheck[i] === false ? " (not found)" : ""}</div>
+				))}
+			</>}
+			<b className="sub">New map</b>
 			<div className="muted">A flat terrain. TB needs the map corner at 200000, 0.</div>
 			<label className="field-row" title="Cells on each side (the map is square)">Grid cells {num(m.cells, (v) => setNewMap({ ...m, cells: Math.max(2, Math.round(v)) }), 256, 2)}</label>
 			<label className="field-row" title="Size of one cell in meters">Cell size m {num(m.cell, (v) => setNewMap({ ...m, cell: Math.max(0.01, v) }), 0.5)}</label>
@@ -1128,7 +1174,7 @@ export function App() {
 				<Tool icon="file-copy-2-line" disabled={busyOrNo} onClick={() => saveProject(true)} title="Save the project as a new file (Ctrl+Shift+S)" />
 				<nav className="tabs">
 					{STAGES.map((s, i) => (
-						<button key={s.id} className={`tab${stage === s.id ? " on" : ""}`} disabled={s.id !== "terrain" && !terrain} onClick={() => (s.id === "export" && !game && setGame(defaultSettings(tbProject.current)), goStage(s.id))} title={`${s.help} (Ctrl+${i + 1})`}>
+						<button key={s.id} className={`tab${stage === s.id ? " on" : ""}`} disabled={s.id !== "terrain" && !terrain} onClick={() => (s.id === "export" && !game && setGame(defaultSettings(tbProject.current, mapRoot)), goStage(s.id))} title={`${s.help} (Ctrl+${i + 1})`}>
 							<Icon name={s.icon} /> {s.name}
 						</button>
 					))}
@@ -1148,6 +1194,7 @@ export function App() {
 			<div className="ribbon">
 				{stage === "terrain" && <>
 					<Group label="Map">
+						<RBtn icon="folder-settings-line" label="Map folder" disabled={busyOrNo} onClick={pickMapRoot} title={mapRoot ? `Map folder: ${mapRoot}. Click to change it.` : "Select the map folder (config.cpp, the WRP, and the data folder). It gives layers.cfg, RoadsLib.cfg, and the export paths."} />
 						<RBtn icon="file-add-line" label="New map" disabled={!!busy || !inTauri} onClick={startOver} title="Close the open map and start again (asks first when a map is open). Then set the grid, the cell size, and the corner in the property panel, and click 'Make the map'." />
 						<RBtn icon="landscape-line" label="Import DEM" disabled={busyOrNo} onClick={openAsc} title="Read a heightmap: ESRI ASCII grid (.asc) or Terragen (.ter, corner 200000, 0)" />
 						<RBtn icon="folder-open-line" label="TB project" disabled={busyOrNo} onClick={openTv4p} title="Read a TB project (TV4P): its heightmap, satellite image, and the objects of its exported WRP" />
@@ -1303,7 +1350,7 @@ export function App() {
 					<canvas ref={maskCanvas} className="view overlay" tabIndex={0} style={{ display: view === "mask" ? "block" : "none" }} />
 					{view !== "mask" && stage !== "export" && terrain && (
 						<div className="ground" role="radiogroup" aria-label="Ground texture of the 3D view">
-							{([["sat", "image-line", "Satellite", "The satellite image (or the height colors without one)"], ["mask", "stack-line", "Mask", "The mask colors"], ["both", "contrast-drop-2-line", "Both", "The mask over the satellite image, with the mask overlay opacity of the Imagery tab"]] as const).map(([k, icon, label, help]) => (
+							{([["sat", "image-line", "Satellite", "The satellite image (or the height colors without one)"], ["mask", "stack-line", "Mask", "The mask colors"], ["both", "contrast-drop-2-line", "Both", "The mask over the satellite image, with the mask overlay opacity of the Paint tab"]] as const).map(([k, icon, label, help]) => (
 								<button key={k} role="radio" aria-checked={ground === k} className={ground === k ? "on" : ""} disabled={k !== "sat" && !mask} onClick={() => setGround(k)} title={k === "sat" ? help : mask ? help : "Open a mask first"}>
 									<Icon name={icon} /> {label}
 								</button>

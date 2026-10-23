@@ -1,4 +1,4 @@
-// Mask and satellite painting in the 3D view (Imagery tab, 3D view). The tools of the 2D painter (MaskView) get image points from
+// Mask and satellite painting in the 3D view (Paint tab, 3D view). The tools of the 2D painter (MaskView) get image points from
 // the terrain under the mouse: the brushes and the flood fill. The polygon and the lasso are only in the 2D view.
 import * as THREE from "three";
 import type { MaskView } from "./maskview";

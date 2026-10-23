@@ -49,9 +49,10 @@ The installer is in `target\release\bundle\nsis`.
 - **Terrain:** Import and edit heightmaps, or create a new map.
 - **3D viewer:** View terrain, satellite imagery, and objects.
 - **Objects:** Place, move, and scatter models. Fill areas using mask layers and placement rules.
-- **Imagery:** Paint masks and satellite images.
+- **Paint:** Paint masks and satellite images.
 - **Shapes and roads:** Create and edit shapes, splines, and roads. Import and export SHP files.
-- **Projects:** Save and reopen your work, including terrain data, imagery, masks, objects, and settings.
+- **Map folder:** Select the mod folder of the map (for example `P:\Bromine\Bro_Appalachia`). The tool finds `data\layers.cfg`, `data\roads\roadslib.cfg`, and `config.cpp` in it, and uses it for the export paths. Select the heightmap, satellite image, and mask yourself, because they are not packed with the map.
+- **Projects:** Save and reopen your work, including terrain data, imagery, masks, objects, settings, and the camera position.
 - **Export:** Generate terrain tiles, RVMAT files, and a WRP for Arma 3.
 
 ## Command-line tools
@@ -87,7 +88,7 @@ See `tests\fixtures\bro_msi\project.example.json` for an example configuration.
 ## Export to Arma 3
 
 1. Open or create a terrain project.
-2. Configure the heightmap, satellite image, mask, and model folders.
+2. Select the map folder, then the heightmap, satellite image, mask, and model folders.
 3. Use the Export tab to generate the terrain files.
 4. Convert the required images to PAA using Arma 3 Tools.
 5. Binarize the WRP and test the terrain in-game.

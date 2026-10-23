@@ -20,6 +20,8 @@ export interface ProjectFile {
 	fills: Fill[];
 	shapes?: Shape[];
 	roadsLib?: string;
+	// The map folder (the mod folder of the map, for example P:\Bromine\Bro_Appalachia).
+	mapRoot?: string;
 	gameExport?: GameSettings;
 	activeLayer: number;
 	// UI settings (z mode of the object text, mask overlay, and so on).

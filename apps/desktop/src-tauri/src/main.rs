@@ -237,6 +237,12 @@ fn dir_exists(path: String) -> bool {
 	Path::new(&path).is_dir()
 }
 
+/// For each path: the file or folder exists.
+#[tauri::command]
+fn paths_exist(paths: Vec<String>) -> Vec<bool> {
+	paths.iter().map(|p| Path::new(p).exists()).collect()
+}
+
 /// Cancel the long job that runs.
 #[tauri::command]
 fn cancel_job() {
@@ -1055,6 +1061,7 @@ fn main() {
 			mask_fill,
 			mask_polygon,
 			layer_detail,
+			paths_exist,
 			mask_undo,
 			mask_export,
 			fill_estimate,

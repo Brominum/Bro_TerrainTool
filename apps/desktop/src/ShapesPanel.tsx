@@ -348,7 +348,7 @@ export function ShapesPanel({ part, se, ed, hb, mv, mask, terrain, shown, recipe
 									<label className="field-row">Feather {num(act.maskFeather, (v) => setAct({ ...act, maskFeather: Math.max(0, v) }), 0.5)}</label>
 								</div>
 							)}
-							<button disabled={!mask} onClick={paintMask} title="Paint the selected mask layer of the Imagery tab. Undo: Ctrl+Z in the Imagery tab.">{s.kind === "polygon" ? "Paint mask inside" : "Paint mask along"}{mask ? `: ${mask.names[mv.color]}` : ""}</button>
+							<button disabled={!mask} onClick={paintMask} title="Paint the selected mask layer of the Paint tab. Undo: Ctrl+Z in the Paint tab.">{s.kind === "polygon" ? "Paint mask inside" : "Paint mask along"}{mask ? `: ${mask.names[mv.color]}` : ""}</button>
 							{s.kind === "polygon" ? (
 								<label className="field-row" title="Empty: the mean height inside">Height m <input type="number" placeholder="mean" value={act.flatten} onChange={(e) => setAct({ ...act, flatten: e.target.value })} /></label>
 							) : (

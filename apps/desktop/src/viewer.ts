@@ -1088,6 +1088,21 @@ export class Viewer {
 		return { x: this.camera.position.x, y: -this.camera.position.z, yaw: this.yaw };
 	}
 
+	// The full camera state for the project file: position (Three.js axes), heading, pitch, speed, and the top-down view.
+	cameraState(): number[] {
+		const p = this.camera.position;
+		return [p.x, p.y, p.z, this.yaw, this.pitch, this.speed, this.ortho ? 1 : 0, this.orthoHalf];
+	}
+
+	setCameraState(c: number[]) {
+		if (c.length !== 8 || !c.every(Number.isFinite)) return;
+		this.camera.position.set(c[0], c[1], c[2]);
+		[this.yaw, this.pitch, this.speed, this.orthoHalf] = [c[3], c[4], c[5], c[7]];
+		this.vel.set(0, 0, 0);
+		this.look.set(0, 0);
+		this.setOrtho(c[6] === 1);
+	}
+
 	// Move the camera to 50 m above the terrain at a point (local meters), looking down at 45 degrees. The heading stays.
 	teleport(x: number, y: number) {
 		const h = this.heightAt(x, y) ?? 0;

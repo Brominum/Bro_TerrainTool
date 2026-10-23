@@ -8,6 +8,8 @@ it("takes the default paths from the TB project", () => {
 	expect([s.wrp, s.layersDir, s.prefix, s.roadsDir]).toEqual(["p:\\bromine\\bro_msi\\bro_msi.wrp", "p:\\bromine\\bro_msi\\data\\layers", "bromine\\bro_msi\\data\\layers\\", "p:\\bromine\\bro_msi\\data\\roads"]);
 	expect([s.tilePx, s.overlapPx, s.layerSize]).toEqual([1024, 128, 32]);
 	expect(defaultSettings(null).wrp).toBe("");
+	const r = defaultSettings(null, "P:\\Bromine\\Bro_Appalachia\\");
+	expect([r.wrp, r.layersDir, r.prefix, r.roadsDir]).toEqual(["P:\\Bromine\\Bro_Appalachia\\bro_appalachia.wrp", "P:\\Bromine\\Bro_Appalachia\\data\\layers", "Bromine\\Bro_Appalachia\\data\\layers\\", "P:\\Bromine\\Bro_Appalachia\\data\\roads"]);
 });
 
 it("writes only the objects of shown layers", () => {

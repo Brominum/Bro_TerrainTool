@@ -23,20 +23,30 @@ export interface GameSettings {
 	autoOverlap: boolean;
 }
 
-// Default settings: from the TB project (the WRP folder, for example p:\bromine\bro_msi), else empty paths.
-export function defaultSettings(tb: Project | null): GameSettings {
-	const dir = tb?.wrpFolder.replace(/[\\/]+$/, "") ?? "";
+// The output paths in a map folder (for example p:\bromine\bro_msi): the WRP in the folder, the layers and the roads in its data folder.
+export function folderPaths(dir: string, name: string): Pick<GameSettings, "wrp" | "layersDir" | "prefix" | "roadsDir"> {
+	dir = dir.replace(/[\\/]+$/, "");
 	const game = dir.replace(/^[a-z]:[\\/]*/i, "");
 	return {
-		wrp: dir ? `${dir}\\${tb!.name}.wrp` : "",
+		wrp: dir ? `${dir}\\${name}.wrp` : "",
 		layersDir: dir ? `${dir}\\data\\layers` : "",
 		prefix: game ? `${game}\\data\\layers\\` : "",
+		roadsDir: dir ? `${dir}\\data\\roads` : "",
+	};
+}
+
+// The name of a map folder: its last part in lower case (P:\Bromine\Bro_Appalachia gives bro_appalachia).
+export const folderName = (dir: string) => dir.replace(/[\\/]+$/, "").split(/[\\/]/).pop()!.toLowerCase();
+
+// Default settings: from the map folder, else from the TB project (its WRP folder), else empty paths.
+export function defaultSettings(tb: Project | null, root?: string | null): GameSettings {
+	return {
+		...(root ? folderPaths(root, folderName(root)) : folderPaths(tb?.wrpFolder ?? "", tb?.name ?? "")),
 		tilePx: tb?.tilePx || 2048,
 		overlapPx: tb?.overlapPx || 512,
 		layerSize: tb?.textureLayer || 64,
 		satellite: true,
 		roads: false,
-		roadsDir: dir ? `${dir}\\data\\roads` : "",
 		paa: false,
 		skipOutside: true,
 		autoOverlap: true,
