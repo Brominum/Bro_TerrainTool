@@ -113,8 +113,8 @@ const DETAIL_MAX = 10;
 // shortcut: the tile size and the fade are guesses, not measured in the game. Make them settings if they look wrong.
 const MID_TILE = 40;
 const MID_FADE = [800, 2000];
-// Opacity of the mid detail (1 was too strong for the user).
-const MID_OPACITY = 0.6;
+// Opacity of the mid detail (1 was too strong, 0.6 too weak for the user).
+const MID_OPACITY = 0.7;
 const DETAIL_COMMON = /* glsl */ `
 uniform float uDetailOn;
 uniform sampler2D uIds;

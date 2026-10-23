@@ -126,7 +126,8 @@ export class Clutter {
 				}
 				kind.mesh = new THREE.InstancedMesh(kind.model.geometry, kind.model.materials, Math.max(64, count * 2));
 				kind.mesh.frustumCulled = false;
-				kind.mesh.receiveShadow = true;
+				// No shadows: the thin clutter got dark shadow acne from the sun shadow map.
+				kind.mesh.receiveShadow = false;
 				this.group.add(kind.mesh);
 			}
 			(kind.mesh.instanceMatrix.array as Float32Array).set(a);
