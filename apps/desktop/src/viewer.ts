@@ -19,12 +19,10 @@ export function oneGroupBox(): THREE.BoxGeometry {
 	b.addGroup(0, b.index!.count, 0);
 	return b;
 }
-// Draw distances grow with the model size (bounding radius r): the most detailed visual LOD to NEAR x r meters,
-// the least detailed one to FAR x r meters, each between the limits. So a bush stops before a building.
+// The most detailed visual LOD shows to NEAR x r meters (r: the bounding radius of the model), between the limits. After that the
+// least detailed LOD shows, up to the draw distance (setDrawDistance), the same for all models.
 const NEAR = 15;
-const FAR = 120;
 const NEAR_LIMITS = [40, 250];
-const FAR_LIMITS = [250, 2500];
 // Objects are sorted into square grid cells of this size (meters). An update checks only the cells near the camera.
 const CELL = 250;
 // First size of the instance buffers. A buffer doubles when more instances are visible.
@@ -41,7 +39,6 @@ interface ObjectGroup {
 	offset: number[];
 	radius: number;
 	near: number;
-	far: number;
 	// Grid cell key (x + y x 65536) and the object IDs in that cell.
 	cells: Map<number, Set<number>>;
 }
@@ -109,7 +106,7 @@ vTUv = vec2(tm.x / (float(uSize.x) * uCell), 1.0 - tm.y / (float(uSize.y) * uCel
 
 // Ground detail textures near the camera (Arma shows the layer textures of layers.cfg near the camera and the satellite image far away).
 // uIds holds the layer of each mask texel (255: none). The 4 nearest texels blend, so the layer borders are soft.
-// The fade is from 10 m to 65 m, as in Arma (the user). shortcut: the scale (texture layer size / repeat of the layer RVMAT) is assumed, not checked in the game.
+// The fade distances are viewport settings (default 10 m to 65 m, as in Arma). shortcut: the scale (texture layer size / repeat of the layer RVMAT) is assumed, not checked in the game.
 const DETAIL_MAX = 10;
 const DETAIL_COMMON = /* glsl */ `
 uniform float uDetailOn;
@@ -274,7 +271,8 @@ export class Viewer {
 	// Sea at 0 m (Arma 3 sea level). A square of 5 map sizes around the map, transparent so that the ground below shows.
 	private sea = new THREE.Mesh(
 		new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
-		withFog(new THREE.MeshLambertMaterial({ color: 0x1f5a85, transparent: true, opacity: 0.55, depthWrite: false })),
+		// It writes depth: the ambient occlusion then sees the flat water, not the ground below it (that made the water flicker).
+		withFog(new THREE.MeshLambertMaterial({ color: 0x1f5a85, transparent: true, opacity: 0.55 })),
 	);
 	private store?: ObjectStore;
 	private lib?: ModelLibrary;
@@ -296,7 +294,8 @@ export class Viewer {
 	// Called after updateHeights (the roads go on the new heights).
 	onHeights?: () => void;
 	// Multiplier of the far draw distance of the objects (the setting "Draw distance").
-	private drawScale = 1;
+	// Draw distance in meters: all objects show up to it, none after it (a hard cut, the user's choice).
+	private drawDist = 2500;
 	private keys = new Set<string>();
 	private yaw = 0;
 	private pitch = -0.5;
@@ -340,6 +339,7 @@ export class Viewer {
 		this.sunDir.copy(s.dir);
 		this.sea.visible = e.sea;
 		detailUniforms.uDetailOn.value = this.detailReady && e.detail ? 1 : 0;
+		(detailUniforms.uDetailFade.value as THREE.Vector2).set(Math.max(0, e.detailStart), Math.max(e.detailStart + 1, e.detailEnd));
 		(this.scene.background as THREE.Color).copy(s.sky);
 		fogUniforms.uFogColor.value.copy(s.sky);
 		fogUniforms.uFogK.value = (Math.max(0, e.fogDensity) / 100) * 0.05;
@@ -675,7 +675,7 @@ export class Viewer {
 			return mesh;
 		};
 		const clamp = (v: number, l: number[]) => Math.min(l[1], Math.max(l[0], v));
-		this.groups.set(model, { model, offset, high: make(high), low: make(low), highIds: [], lowIds: [], radius, near: clamp(radius * NEAR, NEAR_LIMITS), far: clamp(radius * FAR, FAR_LIMITS), cells: new Map() });
+		this.groups.set(model, { model, offset, high: make(high), low: make(low), highIds: [], lowIds: [], radius, near: clamp(radius * NEAR, NEAR_LIMITS), cells: new Map() });
 	}
 
 	// Draw the objects again in the next frame (after a change of objects, layers, or the selection).
@@ -687,9 +687,8 @@ export class Viewer {
 		return this.groups.get(model)?.offset ?? [0, 0, 0];
 	}
 
-	// Draw distance in meters of the largest models (FAR_LIMITS[1] at scale 1). Smaller models scale with it.
 	setDrawDistance(m: number) {
-		this.drawScale = m / FAR_LIMITS[1];
+		this.drawDist = m;
 		this.redraw();
 	}
 
@@ -714,7 +713,7 @@ export class Viewer {
 		for (const g of this.groups.values()) {
 			g.highIds.length = 0;
 			g.lowIds.length = 0;
-			const far = g.far * this.drawScale;
+			const far = this.drawDist;
 			const near = Math.min(g.near, far);
 			const x0 = Math.floor((c.x - far) / CELL);
 			const x1 = Math.floor((c.x + far) / CELL);

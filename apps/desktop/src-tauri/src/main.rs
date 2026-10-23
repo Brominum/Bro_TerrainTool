@@ -332,6 +332,13 @@ async fn sat_end_stroke(state: State<'_, SatState>) -> Result<(), String> {
 	with_sat(&state, |s| Ok(s.end_step())).await
 }
 
+/// Change the colors of the whole satellite image: hue, saturation, lightness, brightness, contrast (see sat::Adjust). One undo step.
+#[tauri::command]
+async fn sat_adjust(adjust: sat::Adjust, state: State<'_, SatState>) -> Result<Option<Rect>, String> {
+	with_sat(&state, move |s| Ok(s.adjust(&adjust))).await
+}
+
+/// Undo or redo in the satellite image.
 #[tauri::command]
 async fn sat_undo(redo: bool, state: State<'_, SatState>) -> Result<Option<Rect>, String> {
 	with_sat(&state, move |s| Ok(if redo { s.redo() } else { s.undo() })).await
@@ -458,10 +465,11 @@ async fn height_offset(dh: f32, state: State<'_, TerrainState>) -> Result<Option
 	with_heights(&state, move |h| Ok(h.offset(dh))).await
 }
 
-/// Cut or fill along a line (local meters): road or runway.
+/// Cut or fill along lines (local meters): roads or runways, as one undo step. See Heights::road.
 #[tauri::command]
-async fn height_road(points: Vec<[f64; 2]>, width: f64, feather: f64, smooth: f64, state: State<'_, TerrainState>) -> Result<Option<Rect>, String> {
-	with_heights(&state, move |h| Ok(h.road(&points, width, feather, smooth))).await
+#[allow(clippy::too_many_arguments)]
+async fn height_road(lines: Vec<Vec<[f64; 2]>>, width: f64, feather: f64, smooth: f64, max_slope: f64, max_tilt: f64, state: State<'_, TerrainState>) -> Result<Option<Rect>, String> {
+	with_heights(&state, move |h| Ok(h.roads(&lines, width, feather, smooth, max_slope, max_tilt))).await
 }
 
 /// Write a shapefile set (SHP, SHX, DBF, CPG). The coordinates are as the UI gives them (TB coordinates).
@@ -1060,6 +1068,7 @@ fn main() {
 			roads_read,
 			game_export,
 			cancel_job,
+			sat_adjust,
 			reset_state,
 			dir_exists,
 			new_terrain

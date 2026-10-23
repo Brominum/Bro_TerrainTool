@@ -202,7 +202,10 @@ export function FillPanel({ ed, viewer, mask, shown, picked = [], onError, onDon
 			{check("Tilt to terrain", "tilt", "Pitch and roll follow the terrain slope. Not verified against TB yet.")}
 			{num("Inset m", "inset", "No objects nearer than this to the edge of the selected layers", 0.5)}
 			{num("Feather m", "feather", "The density falls to 0 across this width at the edge", 0.5)}
-			{num("Clumps 0-1", "noise", "Strength of the clump noise. 0 is off.", 0.05)}
+			<label className="field-row" title="Strength of the clump noise in percent: 0 is off (even spread), 100 is the strongest (dense clumps with gaps between them).">
+				Clumps %
+				<input type="number" step={5} min={0} max={100} value={Math.round(rules.noise * 100)} onChange={(e) => set({ noise: Math.min(100, Math.max(0, Number(e.target.value) || 0)) / 100 })} />
+			</label>
 			{num("Clump size m", "noiseScale", "Size of the clumps", 5)}
 			{num("Max slope °", "maxSlope", "No objects on a steeper terrain")}
 			{num("Min height m", "minHeight", "No objects below this height")}

@@ -27,6 +27,7 @@ import { DEFAULT_ENV, PRESETS, type Environment } from "./env";
 
 // Largest satellite texture side in pixels on the 3D terrain. The tool reduces larger images (mean of the pixels).
 const SAT_MAX = 4096;
+const NO_ADJUST = { hue: 0, saturation: 0, lightness: 0, brightness: 0, contrast: 0 };
 // Largest side of the mask texture on the 3D terrain.
 const MASK_3D_MAX = 4096;
 const inTauri = "__TAURI_INTERNALS__" in window;
@@ -86,8 +87,7 @@ export function App() {
 	const [busy, setBusy] = useState("");
 	const [error, setError] = useState("");
 	const [showObjects, setShowObjects] = useState(true);
-	// Object draw distance in meters (10 to 10000), kept for the next start. The largest models show to this distance, smaller ones
-	// less far in proportion (see Viewer.setDrawDistance).
+	// Object draw distance in meters (10 to 10000), kept for the next start. All objects show up to it (a hard cut).
 	const [drawDist, setDrawDist] = useState(() => Number(localStorage.getItem("terrainTool.drawDistance")) || 2500);
 	const setDrawDistance = (v: number) => setDrawDist(Math.min(10000, Math.max(10, Math.round(v))));
 	useEffect(() => {
@@ -108,6 +108,8 @@ export function App() {
 	const [stage, setStage] = useState<Stage>("terrain");
 	// Imagery tab: the 2D painter, or the 3D view with the mask and satellite on the terrain.
 	const [surface2d, setSurface2d] = useState(true);
+	// Distance of "Clear objects" near the selected shapes (Shapes tab).
+	const [clearDist, setClearDist] = useState(5);
 	// F5 and Ctrl+R load the page again in WebView2, which closes the open map without a question. They do nothing in the tool.
 	useEffect(() => {
 		const key = (e: KeyboardEvent) => {
@@ -119,6 +121,17 @@ export function App() {
 	// The tool needs the work drive P: (Arma 3 Tools: "Mount the Project Drive"): the game paths of models and textures start at its root.
 	useEffect(() => {
 		if (inTauri) dirExists("P:\\").then((ok) => ok || setError("The work drive P: is not mounted. Mount it with the Arma 3 Tools (Mount the Project Drive), then start the tool again. The game paths of models and textures need it."), () => {});
+	}, []);
+	// Height of the viewport panel and the status bar, so that the model preview stays above them.
+	const belowView = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		const el = belowView.current;
+		if (!el) return;
+		const set = () => document.documentElement.style.setProperty("--below-view", `${el.offsetHeight + ((el.nextElementSibling as HTMLElement | null)?.offsetHeight ?? 0)}px`);
+		const ro = new ResizeObserver(set);
+		ro.observe(el);
+		if (el.nextElementSibling) ro.observe(el.nextElementSibling);
+		return () => ro.disconnect();
 	}, []);
 	// The viewport panel at the bottom is open or folded (kept for the next start).
 	const [vpOpen, setVpOpen] = useState(() => pref("vpOpen", "0") === "1");
@@ -419,6 +432,7 @@ export function App() {
 			const n = changes();
 			await writeProject(path);
 			projectPath.current = path;
+			addRecent(path);
 			setProjectName(path.split(/[\\/]/).pop()!.replace(/\.ttproj$/i, ""));
 			savedAt.current = n;
 		} catch (e) {
@@ -440,9 +454,23 @@ export function App() {
 		location.reload();
 	};
 	const mayDiscard = async () => changes() === savedAt.current || (await ask("There are changes that are not saved. Continue without saving?", { title: "Terrain Tool", kind: "warning" }));
-	const openProjectFile = async () => {
+	// The 5 last opened or saved project files, newest first (kept for the next start).
+	const [recent, setRecent] = useState<string[]>(() => {
+		try {
+			return JSON.parse(pref("recent", "[]"));
+		} catch {
+			return [];
+		}
+	});
+	const addRecent = (path: string) => {
+		const list = [path, ...recent.filter((p) => p.toLowerCase() !== path.toLowerCase())].slice(0, 5);
+		setRecent(list);
+		setPref("recent", JSON.stringify(list));
+	};
+	// Open a project: the given file (recent list), else a file dialog.
+	const openProjectFile = async (given?: string) => {
 		if (!(await mayDiscard())) return;
-		const path = await open({ multiple: false, directory: false, filters: [{ name: "Terrain Tool project", extensions: ["ttproj"] }] });
+		const path = given ?? (await open({ multiple: false, directory: false, filters: [{ name: "Terrain Tool project", extensions: ["ttproj"] }] }));
 		if (typeof path !== "string") return;
 		setBusy("Opening project");
 		setError("");
@@ -490,6 +518,7 @@ export function App() {
 			projectPath.current = path;
 			setProjectName(path.split(/[\\/]/).pop()!.replace(/\.ttproj$/i, ""));
 			savedAt.current = autosavedAt.current = changes();
+			addRecent(path);
 			goStage("objects");
 		} catch (e) {
 			setError(String(e));
@@ -575,6 +604,16 @@ export function App() {
 			await satExport(path);
 		} catch (e) {
 			setError(String(e));
+		} finally {
+			setBusy("");
+		}
+	};
+	// Color change of the whole satellite image: hue in degrees, the others in percent (-100 to 100).
+	const [adj, setAdj] = useState(NO_ADJUST);
+	const applyAdjust = async () => {
+		setBusy("Changing the satellite image");
+		try {
+			await maskView.current!.adjustSat({ hue: adj.hue, saturation: adj.saturation / 100, lightness: adj.lightness / 100, brightness: adj.brightness / 100, contrast: adj.contrast / 100 });
 		} finally {
 			setBusy("");
 		}
@@ -838,6 +877,20 @@ export function App() {
 			{mv.target === "sat" && mv.satTool === "color" && (
 				<label className="field-row" title="Brush color. Ctrl+click in the image picks a color.">Color <input type="color" value={`#${mv.rgb.map((v) => v.toString(16).padStart(2, "0")).join("")}`} onChange={(e) => setMv({ rgb: [1, 3, 5].map((i) => parseInt(e.target.value.slice(i, i + 2), 16)) })} /></label>
 			)}
+			{mv.target === "sat" && sat && (
+				<>
+					<b className="sub">Whole image</b>
+					<div className="muted">Brightness and contrast, then hue, saturation, and lightness, on all pixels. One undo step.</div>
+					<label className="field-row" title="Turn all colors around the color wheel, -180 to 180 degrees">Hue ° <NumInput value={adj.hue} onChange={(v) => setAdj({ ...adj, hue: Math.max(-180, Math.min(180, v)) })} step={5} min={-180} max={180} /></label>
+					{(["saturation", "lightness", "brightness", "contrast"] as const).map((k) => (
+						<label key={k} className="field-row" title={`-100 to 100 %. 0: no change.`}>{k[0].toUpperCase() + k.slice(1)} % <NumInput value={adj[k]} onChange={(v) => setAdj({ ...adj, [k]: Math.max(-100, Math.min(100, v)) })} step={5} min={-100} max={100} /></label>
+					))}
+					<div className="row wrap">
+						<Btn icon="contrast-drop-2-line" disabled={!!busy || Object.values(adj).every((v) => v === 0)} onClick={applyAdjust} title="Change the whole satellite image (Ctrl+Z gives it back)">Apply</Btn>
+						<Btn icon="refresh-line" onClick={() => setAdj(NO_ADJUST)} title="Set all values to 0">Reset values</Btn>
+					</div>
+				</>
+			)}
 			{mv.target === "sat" && mv.satTool === "texture" && (
 				<>
 					<Btn icon="folder-open-line" disabled={!sat} onClick={openTexture} title={texture?.info ?? "Load a PNG, BMP, or PAA texture"}>{texture ? texture.path.split(/[\\/]/).pop() : "Load texture"}</Btn>
@@ -955,6 +1008,12 @@ export function App() {
 			<Btn icon="landscape-line" disabled={!inTauri || !!busy} onClick={openAsc} title="Read a heightmap: ESRI ASCII grid (.asc) or Terragen (.ter, corner 200000, 0)">Import DEM (ASC, TER)</Btn>
 			<Btn icon="folder-open-line" disabled={!inTauri || !!busy} onClick={openTv4p} title="Read a TB project: its heightmap, satellite image, and the objects of its exported WRP">Open TB project (TV4P)</Btn>
 			<Btn icon="map-2-line" disabled={!inTauri || !!busy} onClick={openWrp} title="Read an editable WRP: the heights and the objects">Open WRP</Btn>
+			{!!recent.length && <>
+				<b className="sub">Recent projects</b>
+				{recent.map((p) => (
+					<Btn key={p} icon="history-line" disabled={busyOrNo} onClick={() => openProjectFile(p)} title={p}>{p.split(/[\\/]/).pop()}</Btn>
+				))}
+			</>}
 			<b className="sub">Open map</b>
 			<div className="muted">
 				{terrain ? `Grid ${terrain.ncols} x ${terrain.nrows}, cell ${terrain.cell} m, size ${terrain.ncols * terrain.cell} m, corner ${terrain.xll}, ${terrain.yll}` : "No heightmap"}
@@ -987,7 +1046,7 @@ export function App() {
 			</Group>
 			<Group label="Objects">
 				<div className="rcol">
-					<label title="Object draw distance in meters (10 to 10000). The largest models show to this distance, smaller models (bushes) less far. Higher values are slower.">Draw distance m <NumInput value={drawDist} onChange={setDrawDistance} step={100} min={10} max={10000} /></label>
+					<label title="Object draw distance in meters (10 to 10000). All objects show up to this distance, none after it. Higher values are slower.">Draw distance m <NumInput value={drawDist} onChange={setDrawDistance} step={100} min={10} max={10000} /></label>
 					<input type="range" min={10} max={10000} step={10} value={drawDist} onChange={(e) => setDrawDistance(Number(e.target.value))} />
 				</div>
 			</Group>
@@ -1002,7 +1061,13 @@ export function App() {
 				<div className="rcol">
 					<label title="Soft shadows in corners, under trees, and at the foot of walls (screen space, GTAO). Costs some FPS."><input type="checkbox" checked={env.ao} onChange={(e) => envSet({ ao: e.target.checked })} />Ambient occlusion</label>
 					<label title="A small glow around bright parts of the view"><input type="checkbox" checked={env.bloom} onChange={(e) => envSet({ bloom: e.target.checked })} />Bloom</label>
-					<label title="The ground textures of layers.cfg near the camera (from the mask), the satellite image further away. Needs the mask and the layer RVMAT files in the model folders."><input type="checkbox" checked={env.detail} onChange={(e) => envSet({ detail: e.target.checked })} />Ground detail</label>
+				</div>
+			</Group>
+			<Group label="Ground detail">
+				<div className="rcol">
+					<label title="The ground textures of layers.cfg near the camera (from the mask), the satellite image further away. Needs the mask and the layer RVMAT files in the model folders."><input type="checkbox" checked={env.detail} onChange={(e) => envSet({ detail: e.target.checked })} />Show</label>
+					<label title="The ground detail textures are full up to this distance (meters), then fade to the satellite image">From m <NumInput value={env.detailStart} onChange={(v) => envSet({ detailStart: Math.max(0, v) })} step={5} min={0} /></label>
+					<label title="The ground detail textures are gone at this distance (meters)">To m <NumInput value={env.detailEnd} onChange={(v) => envSet({ detailEnd: Math.max(1, v) })} step={5} min={1} /></label>
 				</div>
 			</Group>
 			<Group label="Fog (as in 3DEN)">
@@ -1043,7 +1108,15 @@ export function App() {
 		<div className="app">
 			<div className="top">
 				<span className="title" title={projectPath.current ?? "Not saved"}>{projectName ?? "Untitled"}{changes() !== savedAt.current ? " *" : ""}</span>
-				<Tool icon="folder-open-line" disabled={busyOrNo} onClick={openProjectFile} title="Open a Terrain Tool project (.ttproj)" />
+				<Tool icon="folder-open-line" disabled={busyOrNo} onClick={() => openProjectFile()} title="Open a Terrain Tool project (.ttproj)" />
+				<details className="recent">
+					<summary title="Open one of the last 5 projects"><Icon name="history-line" /></summary>
+					<div className="menu">
+						{recent.length ? recent.map((p) => (
+							<button key={p} disabled={busyOrNo} title={p} onClick={(e) => ((e.currentTarget.closest("details") as HTMLDetailsElement).open = false, openProjectFile(p))}>{p.split(/[\\/]/).pop()}</button>
+						)) : <div className="muted">No recent projects</div>}
+					</div>
+				</details>
 				<Tool icon="save-3-line" disabled={busyOrNo} onClick={() => saveProject(false)} title="Save the project (Ctrl+S)" />
 				<Tool icon="file-copy-2-line" disabled={busyOrNo} onClick={() => saveProject(true)} title="Save the project as a new file (Ctrl+Shift+S)" />
 				<nav className="tabs">
@@ -1143,6 +1216,12 @@ export function App() {
 							<RBtn key={k} icon={{ line: "route-line", polygon: "shape-line", point: "map-pin-line" }[k]} label={`New ${k}`} on={se.drawing !== null && se.shape(se.drawing)?.kind === k} disabled={!terrain} onClick={() => (se.start(k), setTick((n) => n + 1), canvas.current!.focus())} title="Click on the terrain to add points. Enter or double-click ends the shape." />
 						))}
 					</Group>
+					<Group label="Selected shapes">
+						<RBtn icon="eraser-line" label="Clear objects" disabled={!se.selectedShapes().length} onClick={() => setError(`${se.clearNear(clearDist)} objects deleted near ${se.selectedShapes().length} shape(s).`)} title="Delete the objects near the selected shapes (list selection and the selected shape; visible layers that are not locked; one undo step): within the distance of a line, of a road edge (half the road width is added), of a point, or of a polygon edge, and inside polygons." />
+						<div className="rcol">
+							<label title="Distance in meters from the line, the road edge, the point, or the polygon edge">Distance m <NumInput value={clearDist} onChange={(v) => setClearDist(Math.max(0, v))} step={1} min={0} /></label>
+						</div>
+					</Group>
 					<Group label="Erase objects">
 						{(["polygon", "lasso"] as const).map((k) => (
 							<RBtn key={k} icon={k === "polygon" ? "shape-line" : "pen-nib-line"} label={k === "polygon" ? "Polygon" : "Lasso"} on={se.erase === k} disabled={!terrain} onClick={() => (se.setErase(se.erase === k ? null : k), canvas.current!.focus())} title={`Delete the objects inside the area (visible layers that are not locked; one undo step). ${k === "polygon" ? "Click the points; Enter or double-click ends the area." : "Drag on the terrain."} Escape cancels the area. Click again to stop.`} />
@@ -1237,7 +1316,7 @@ export function App() {
 					</div>
 				</div>
 			</div>
-			<div className="vpanel">
+			<div className="vpanel" ref={belowView}>
 				<button className="vhead" onClick={() => setVpOpen(!vpOpen)} title="Show or hide the viewport settings (time of day, camera, light, effects, fog)">
 					<Icon name={vpOpen ? "arrow-down-s-line" : "arrow-up-s-line"} /> Viewport
 				</button>

@@ -17,11 +17,13 @@ export interface Environment {
 	bloom: boolean;
 	// Show a water plane at 0 m (the sea level of Arma 3).
 	sea: boolean;
-	// Ground detail textures of layers.cfg near the camera.
+	// Ground detail textures of layers.cfg near the camera: full to detailStart meters, gone at detailEnd meters.
 	detail: boolean;
+	detailStart: number;
+	detailEnd: number;
 }
 
-export const DEFAULT_ENV: Environment = { hour: 9, shadows: true, sun: 1, fogDensity: 0, fogBase: 0, fogDecay: 0, ao: true, bloom: true, sea: true, detail: true };
+export const DEFAULT_ENV: Environment = { hour: 9, shadows: true, sun: 1, fogDensity: 0, fogBase: 0, fogDecay: 0, ao: true, bloom: true, sea: true, detail: true, detailStart: 10, detailEnd: 65 };
 
 export const PRESETS: { name: string; icon: string; hour: number }[] = [
 	{ name: "Sunrise", icon: "sun-foggy-line", hour: 6 },

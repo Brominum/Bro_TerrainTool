@@ -126,6 +126,50 @@ pub fn decode_dxt(format: paa::Format, w: usize, h: usize, data: &[u8]) -> Resul
 	Ok(out)
 }
 
+/// Color change of the whole image. Hue in degrees (-180 to 180); the other values -1 to 1 (0: no change).
+/// Order: brightness and contrast on each channel, then hue, saturation, and lightness (HSL).
+#[derive(Debug, Clone, Copy, Default, serde::Deserialize)]
+pub struct Adjust {
+	pub hue: f32,
+	pub saturation: f32,
+	pub lightness: f32,
+	pub brightness: f32,
+	pub contrast: f32,
+}
+
+pub fn adjust_rgb(c: [u8; 3], a: &Adjust) -> [u8; 3] {
+	let f = |v: u8| (((v as f32 / 255.0) - 0.5) * (1.0 + a.contrast) + 0.5 + a.brightness).clamp(0.0, 1.0);
+	let [r, g, b] = c.map(f);
+	let (max, min) = (r.max(g).max(b), r.min(g).min(b));
+	let mut l = (max + min) / 2.0;
+	let d = max - min;
+	let mut s = if d == 0.0 { 0.0 } else { d / (1.0 - (2.0 * l - 1.0).abs()) };
+	let mut h = if d == 0.0 {
+		0.0
+	} else if max == r {
+		60.0 * ((g - b) / d).rem_euclid(6.0)
+	} else if max == g {
+		60.0 * ((b - r) / d + 2.0)
+	} else {
+		60.0 * ((r - g) / d + 4.0)
+	};
+	h = (h + a.hue).rem_euclid(360.0);
+	s = (s * (1.0 + a.saturation)).clamp(0.0, 1.0);
+	l = if a.lightness > 0.0 { l + (1.0 - l) * a.lightness } else { l * (1.0 + a.lightness) }.clamp(0.0, 1.0);
+	let ch = (1.0 - (2.0 * l - 1.0).abs()) * s;
+	let x = ch * (1.0 - ((h / 60.0).rem_euclid(2.0) - 1.0).abs());
+	let m = l - ch / 2.0;
+	let (r, g, b) = match (h / 60.0) as u32 {
+		0 => (ch, x, 0.0),
+		1 => (x, ch, 0.0),
+		2 => (0.0, ch, x),
+		3 => (0.0, x, ch),
+		4 => (x, 0.0, ch),
+		_ => (ch, 0.0, x),
+	};
+	[r, g, b].map(|v| ((v + m) * 255.0).round().clamp(0.0, 255.0) as u8)
+}
+
 pub struct Sat {
 	pub width: u32,
 	pub height: u32,
@@ -280,6 +324,33 @@ impl Sat {
 		let r = self.s.redo();
 		r.inspect(|&r| self.changed(r))
 	}
+	/// Change the colors of the whole image (see `Adjust`). One undo step. The tiles are done on all CPU cores.
+	pub fn adjust(&mut self, a: &Adjust) -> Option<Rect> {
+		self.end_step();
+		let n = self.s.tiles.len();
+		// tile_mut keeps the before-image for undo and makes each tile unique, so Arc::get_mut below works.
+		for t in 0..n {
+			self.s.tile_mut(t);
+		}
+		let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
+		let chunk = n.div_ceil(threads).max(1);
+		std::thread::scope(|sc| {
+			for part in self.s.tiles.chunks_mut(chunk) {
+				sc.spawn(move || {
+					for t in part {
+						for px in Arc::get_mut(t).expect("a unique tile").chunks_exact_mut(3) {
+							px.copy_from_slice(&adjust_rgb([px[0], px[1], px[2]], a));
+						}
+					}
+				});
+			}
+		});
+		let r = [0, 0, self.width, self.height];
+		self.s.mark(r);
+		self.changed(r);
+		self.end_step();
+		Some(r)
+	}
 	/// Forget the mip tiles in a changed area.
 	fn changed(&mut self, r: Rect) {
 		for (i, level) in self.mips.iter_mut().enumerate() {
@@ -358,6 +429,24 @@ impl Sat {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn adjust_colors_and_undo() {
+		let none = Adjust::default();
+		for c in [[0, 0, 0], [255, 255, 255], [200, 120, 40], [12, 200, 99]] {
+			let o = adjust_rgb(c, &none);
+			assert!(o.iter().zip(c).all(|(a, b)| (*a as i32 - b as i32).abs() <= 1), "{c:?} {o:?}");
+		}
+		// Hue +120: red becomes green. Saturation -1: grey. Brightness +1: white.
+		assert_eq!(adjust_rgb([255, 0, 0], &Adjust { hue: 120.0, ..none }), [0, 255, 0]);
+		let g = adjust_rgb([200, 120, 40], &Adjust { saturation: -1.0, ..none });
+		assert!(g[0] == g[1] && g[1] == g[2]);
+		assert_eq!(adjust_rgb([10, 20, 30], &Adjust { brightness: 1.0, ..none }), [255, 255, 255]);
+		let mut s = Sat::from_fn(600, 600, |x, _| [(x % 256) as u8, 50, 100]);
+		assert_eq!(s.adjust(&Adjust { brightness: 1.0, ..none }), Some([0, 0, 600, 600]));
+		assert_eq!(s.get(599, 599), [255, 255, 255]);
+		s.undo();
+		assert_eq!(s.get(10, 5), [10, 50, 100]);
+	}
 	fn img() -> Sat {
 		Sat::from_fn(1100, 600, |x, y| [(x % 256) as u8, (y % 256) as u8, 100])
 	}

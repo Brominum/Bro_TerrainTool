@@ -50,6 +50,8 @@ export function ModelPanel({ enabled, onLibrary, placing, onPlace, onShow, onPic
 	const [dups, setDups] = useState<[string, string[]][]>([]);
 	const [textures, setTextures] = useState(0);
 	const [search, setSearch] = useState("");
+	// Kind filter: vanilla trees start with t_, bushes with b_.
+	const [kind, setKind] = useState<"" | "t_" | "b_">("");
 	const [busy, setBusy] = useState(false);
 	const [model, setModel] = useState<Model>();
 	const [picked, setPicked] = useState<string[]>([]);
@@ -78,8 +80,8 @@ export function ModelPanel({ enabled, onLibrary, placing, onPlace, onShow, onPic
 	}, []);
 	const found = useMemo(() => {
 		const s = search.trim().toLowerCase();
-		return (s ? keys.filter((k) => k.includes(s)) : keys).slice(0, LIST_MAX);
-	}, [keys, search]);
+		return keys.filter((k) => (!kind || k.startsWith(kind)) && (!s || k.includes(s))).slice(0, LIST_MAX);
+	}, [keys, search, kind]);
 	// Keep the folders and scan them. A scan with no folders gives an empty database.
 	const scan = async (list: string[]) => {
 		setRoots(list);
@@ -138,6 +140,11 @@ export function ModelPanel({ enabled, onLibrary, placing, onPlace, onShow, onPic
 			</details>
 			{error && <div className="error">{error}</div>}
 			<input placeholder="Search model name" value={search} onChange={(e) => setSearch(e.target.value)} />
+			<div className="row pages" role="radiogroup" aria-label="Model kind">
+				{([["", "All"], ["t_", "Trees"], ["b_", "Bushes"]] as const).map(([k, label]) => (
+					<button key={k} role="radio" aria-checked={kind === k} className={kind === k ? "on" : ""} onClick={() => setKind(k)} title={k ? `Only models whose name starts with ${k}` : "All models"}>{label}</button>
+				))}
+			</div>
 			<ul className="list" title="Click shows a model. Ctrl+click and Shift+click select more models for the recipe of the object fill.">
 				{found.map((k) => (
 					<li key={k} className={model?.name === k ? "active" : picked.includes(k) ? "picked" : ""} onClick={(e) => click(k, e)}>{k}</li>

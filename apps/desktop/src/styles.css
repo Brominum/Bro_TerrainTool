@@ -643,7 +643,8 @@ details.folders[open] {
 .preview-float {
 	position: fixed;
 	left: 282px;
-	bottom: 36px;
+	/* Above the viewport panel and the status bar (App sets --below-view to their height). */
+	bottom: calc(var(--below-view, 30px) + 6px);
 	width: 300px;
 	flex-direction: column;
 	gap: 4px;
@@ -667,6 +668,45 @@ details.folders[open] {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+/* Recent projects: a small menu under the history button of the top bar. */
+.recent {
+	position: relative;
+}
+.recent summary {
+	list-style: none;
+	cursor: pointer;
+	padding: 4px 6px;
+	border-radius: 4px;
+}
+.recent summary::-webkit-details-marker {
+	display: none;
+}
+.recent .menu {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	z-index: 20;
+	display: flex;
+	flex-direction: column;
+	min-width: 220px;
+	padding: 4px;
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.recent .menu button {
+	text-align: left;
+	background: none;
+	border: none;
+	color: var(--text);
+	padding: 4px 8px;
+	cursor: pointer;
+}
+.recent .menu button:hover {
+	background: var(--accent);
+	color: #fff;
 }
 .vpanel {
 	background: var(--panel);

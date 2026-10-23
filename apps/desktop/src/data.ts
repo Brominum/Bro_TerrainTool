@@ -261,6 +261,15 @@ export const satRegion = async (level: number, x: number, y: number, w: number, 
 export const satPaint = (points: number[][], radius: number, hardness: number, opacity: number, tool: SatTool, color: number[], offset: number[]) =>
 	invoke<Rect | null>("sat_paint", { points, radius, hardness, opacity, tool, color, offset });
 export const satEndStroke = () => invoke<void>("sat_end_stroke");
+// Color change of the whole satellite image (see sat::Adjust): hue in degrees, the others -1 to 1. One undo step.
+export interface SatAdjust {
+	hue: number;
+	saturation: number;
+	lightness: number;
+	brightness: number;
+	contrast: number;
+}
+export const satAdjust = (adjust: SatAdjust) => invoke<Rect | null>("sat_adjust", { adjust });
 export const satUndo = (redo: boolean) => invoke<Rect | null>("sat_undo", { redo });
 export const satPick = (x: number, y: number) => invoke<[number, number, number]>("sat_pick", { x, y });
 // One repeat of the texture covers size x size pixels of the satellite image.
@@ -294,7 +303,8 @@ export const projectSaved = (dir: string) => invoke<void>("project_saved", { dir
 export const maskBand = (points: number[][], half: number, feather: number, color: number, seed: number) => invoke<Rect | null>("mask_band", { points, half, feather, color, seed });
 export const heightFlattenPolygon = (points: number[][], target: number | null, feather: number) => invoke<Rect | null>("height_flatten_polygon", { points, target, feather });
 export const heightOffset = (dh: number) => invoke<Rect | null>("height_offset", { dh });
-export const heightRoad = (points: number[][], width: number, feather: number, smooth: number) => invoke<Rect | null>("height_road", { points, width, feather, smooth });
+// Cut or fill along lines (one undo step). maxSlope and maxTilt are fractions (0.12 is 12 %), 0 for no limit and flat across.
+export const heightRoad = (lines: number[][][], width: number, feather: number, smooth: number, maxSlope: number, maxTilt: number) => invoke<Rect | null>("height_road", { lines, width, feather, smooth, maxSlope, maxTilt });
 // Shapefiles. The coordinates are TB coordinates (with the map offset).
 export type ShpKind = "point" | "line" | "polygon";
 export interface ShpShape {

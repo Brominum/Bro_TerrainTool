@@ -39,14 +39,15 @@ export function ShapesPanel({ part, se, ed, hb, mv, mask, terrain, shown, recipe
 	const [lastPick, setLastPick] = useState<number | null>(null);
 	// Imported shapes that are mostly outside the map: their ids, their box (x0, y0, x1, y1, local meters), and the proposed move.
 	const [offMap, setOffMap] = useState<{ ids: number[]; box: number[]; dx: number; dy: number } | null>(null);
-	const [act, setAct] = useState({ width: 8, feather: 6, smooth: 30, flatten: "", maskWidth: 6, maskFeather: 2 });
+	// Road terrain: range from the centre (half the flat width), feather, smooth along, the grade limit and the cross slope (percent).
+	const [act, setAct] = useState({ range: 4, feather: 6, smooth: 30, slope: 0, tilt: 0, flatten: "", maskWidth: 6, maskFeather: 2 });
 	const s = se.shape(se.selected);
 	// The list and the properties are two parts of this panel (left and right); the editor change makes both draw again.
 	const redraw = () => (setTick((n) => n + 1), se.onChange?.());
-	// A selected road gives its road width to "Cut / fill road".
+	// A selected road gives half its road width to the range of the road terrain.
 	const roadWidth = s && s.kind === "line" ? se.roads.get(roadId(s) ?? -1)?.width : undefined;
 	useEffect(() => {
-		if (roadWidth) setAct((a) => ({ ...a, width: roadWidth }));
+		if (roadWidth) setAct((a) => ({ ...a, range: roadWidth / 2 }));
 	}, [s?.id, roadWidth]);
 	// Change the selected shape as one undo step. `objects`: its spline objects change too.
 	const change = (f: (s: Shape) => void, objects = true) => {
@@ -98,7 +99,9 @@ export function ShapesPanel({ part, se, ed, hb, mv, mask, terrain, shown, recipe
 		job("Changing the terrain", async () => {
 			const base = hb.base();
 			const t = act.flatten.trim() === "" ? null : Number(act.flatten);
-			const r = s!.kind === "polygon" ? await heightFlattenPolygon(pts(s!), t, act.feather) : await heightRoad(pts(s!), act.width, act.feather, act.smooth);
+			// Lines: all selected lines (list selection and the selected shape), as one undo step.
+			const lines = se.selectedShapes().filter((x) => x.kind === "line" && x.points.length > 1).map(pts);
+			const r = s!.kind === "polygon" ? await heightFlattenPolygon(pts(s!), t, act.feather) : await heightRoad(lines, act.range * 2, act.feather, act.smooth, act.slope / 100, act.tilt / 100);
 			if (r) await hb.finish(r, base);
 		});
 	const scatter = () =>
@@ -350,12 +353,14 @@ export function ShapesPanel({ part, se, ed, hb, mv, mask, terrain, shown, recipe
 								<label className="field-row" title="Empty: the mean height inside">Height m <input type="number" placeholder="mean" value={act.flatten} onChange={(e) => setAct({ ...act, flatten: e.target.value })} /></label>
 							) : (
 								<>
-									<label className="field-row" title="Width of the flat part">Road width m {num(act.width, (v) => setAct({ ...act, width: Math.max(0, v) }), 1)}</label>
+									<label className="field-row" title="Full change up to this distance from the centre line (half the road width; a road type gives it)">Range from centre m {num(act.range, (v) => setAct({ ...act, range: Math.max(0, v) }), 0.5)}</label>
 									<label className="field-row" title="The height of the centre line is the mean over this distance">Smooth along m {num(act.smooth, (v) => setAct({ ...act, smooth: Math.max(0, v) }), 5)}</label>
+									<label className="field-row" title="The steepest grade along the road in percent. 0: no limit.">Max slope % {num(act.slope, (v) => setAct({ ...act, slope: Math.max(0, v) }), 1)}</label>
+									<label className="field-row" title="The cross slope that stays, in percent. 0: flat across the road. Higher values keep more of the terrain slope across the road.">Max tilt % {num(act.tilt, (v) => setAct({ ...act, tilt: Math.max(0, v) }), 1)}</label>
 								</>
 							)}
 							<label className="field-row" title="The change falls to 0 across this distance">Feather m {num(act.feather, (v) => setAct({ ...act, feather: Math.max(0, v) }), 1)}</label>
-							<button disabled={!terrain} onClick={terrainAction} title="Undo: Ctrl+Z in the 3D view">{s.kind === "polygon" ? "Flatten inside" : "Cut / fill road"}</button>
+							<button disabled={!terrain} onClick={terrainAction} title="Undo: Ctrl+Z in the 3D view">{s.kind === "polygon" ? "Flatten inside" : `Smooth terrain under ${se.selectedShapes().filter((x) => x.kind === "line").length} road(s)`}</button>
 						</>
 					)}
 					<button onClick={() => (se.remove(s.id), redraw())} title="Delete the shape and its spline objects (Ctrl+Z gives them back)"><Icon name="delete-bin-line" /> Delete shape</button>

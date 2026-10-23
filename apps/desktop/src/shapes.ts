@@ -160,6 +160,14 @@ export function inside(ring: number[][], x: number, y: number): boolean {
 	return c;
 }
 
+// Distance from a point to the segment a-b.
+export function segDist(x: number, y: number, a: number[], b: number[]): number {
+	const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+	const l2 = dx * dx + dy * dy;
+	const t = l2 > 0 ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / l2)) : 0;
+	return Math.hypot(x - a[0] - t * dx, y - a[1] - t * dy);
+}
+
 // A property of a shape (the key ignores case).
 export function prop(s: Shape, key: string): string | undefined {
 	return s.props.find((p) => p[0].toLowerCase() === key.toLowerCase())?.[1];

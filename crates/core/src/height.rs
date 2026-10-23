@@ -364,8 +364,24 @@ impl Heights {
 	/// Cut or fill the terrain along a line (local meters), for a road or a runway. The target height is the terrain on the centre
 	/// line, smoothed along the line with a mean over `smooth` meters. Full change inside `width` / 2, then a smooth fall across `feather`.
 	/// This is one undo step.
-	pub fn road(&mut self, line: &[[f64; 2]], width: f64, feather: f64, smooth: f64) -> Option<Rect> {
+	/// `max_slope` limits the grade along the line (0.12 is 12 %; 0 or less: no limit). `max_tilt` is the cross slope that stays
+	/// (0: flat across the road; a cell keeps its height difference to the centre up to max_tilt x its distance from the centre).
+	pub fn road(&mut self, line: &[[f64; 2]], width: f64, feather: f64, smooth: f64, max_slope: f64, max_tilt: f64) -> Option<Rect> {
+		self.roads(&[line.to_vec()], width, feather, smooth, max_slope, max_tilt)
+	}
+	/// `road` for more lines, as one undo step. The lines are done in order (a later line changes the cells of an earlier one).
+	pub fn roads(&mut self, lines: &[Vec<[f64; 2]>], width: f64, feather: f64, smooth: f64, max_slope: f64, max_tilt: f64) -> Option<Rect> {
 		self.end_step();
+		let mut dirty = None;
+		for line in lines {
+			if let Some(r) = self.road_step(line, width, feather, smooth, max_slope, max_tilt) {
+				dirty = Some(crate::tilestore::union(dirty, r));
+			}
+		}
+		self.end_step();
+		dirty
+	}
+	fn road_step(&mut self, line: &[[f64; 2]], width: f64, feather: f64, smooth: f64, max_slope: f64, max_tilt: f64) -> Option<Rect> {
 		if line.len() < 2 {
 			return None;
 		}
@@ -399,6 +415,18 @@ impl Heights {
 				sum / (b - a) as f64
 			})
 			.collect();
+		// Grade limit: forward, then backward. After the backward pass each pair of samples keeps the limit.
+		let mut smoothed = smoothed;
+		if max_slope > 0.0 {
+			for i in 1..prof.len() {
+				let g = max_slope * (prof[i].0 - prof[i - 1].0);
+				smoothed[i] = smoothed[i].clamp(smoothed[i - 1] - g, smoothed[i - 1] + g);
+			}
+			for i in (0..prof.len() - 1).rev() {
+				let g = max_slope * (prof[i + 1].0 - prof[i].0);
+				smoothed[i] = smoothed[i].clamp(smoothed[i + 1] - g, smoothed[i + 1] + g);
+			}
+		}
 		let target = |s: f64| {
 			let k = prof.partition_point(|p| p.0 <= s).clamp(1, prof.len() - 1);
 			let (p0, p1) = (prof[k - 1], prof[k]);
@@ -434,12 +462,12 @@ impl Heights {
 					let t = (d - w2) / f;
 					1.0 - t * t * (3.0 - 2.0 * t)
 				};
-				Some((c, row, (h + (target(s) - h) * k) as f32))
+				let lim = max_tilt.max(0.0) * d;
+				let goal = target(s) + (h - target(s)).clamp(-lim, lim);
+				Some((c, row, (h + (goal - h) * k) as f32))
 			})
 			.collect();
-		let r = self.write(writes);
-		self.end_step();
-		r
+		self.write(writes)
 	}
 	/// Add `dh` meters to all heights (not to NODATA cells), for example to move the sea level. This is one undo step.
 	pub fn offset(&mut self, dh: f32) -> Option<Rect> {
@@ -754,7 +782,7 @@ mod tests {
 			data: bump,
 			..Asc::from_south_rows(n, n, &data, 0.0, 0.0, 1.0)
 		});
-		road.road(&[[50.0, 10.0], [50.0, 90.0]], 6.0, 4.0, 10.0);
+		road.road(&[[50.0, 10.0], [50.0, 90.0]], 6.0, 4.0, 10.0, 0.0, 0.0);
 		// On the centre line the height is the smoothed centre: near 25 m, the bump of 40 m is mostly gone.
 		let c = road.get(50, n - 1 - 50);
 		assert!((25.0..27.5).contains(&c), "{c}");
@@ -762,6 +790,17 @@ mod tests {
 		assert!((road.get(48, n - 1 - 30) - 25.0).abs() < 0.1);
 		// After width / 2 + feather (7 m) there is no change.
 		assert_eq!((road.get(58, n - 1 - 30), road.get(42, n - 1 - 30)), (29.0, 21.0));
+		// Tilt 10 %: 2 m from the centre the height may differ by 0.2 m from the centre (the slope is 50 % across).
+		let mut tilt = Heights::from_asc(&Asc::from_south_rows(n, n, &data, 0.0, 0.0, 1.0));
+		tilt.road(&[[50.0, 10.0], [50.0, 90.0]], 6.0, 4.0, 1.0, 0.0, 0.1);
+		assert!((tilt.get(48, n - 1 - 30) - 24.8).abs() < 0.05, "{}", tilt.get(48, n - 1 - 30));
+		// Grade 10 % along a road that goes up the 50 % slope (west to east).
+		let mut grade = Heights::from_asc(&Asc::from_south_rows(n, n, &data, 0.0, 0.0, 1.0));
+		grade.road(&[[10.0, 50.0], [90.0, 50.0]], 6.0, 0.0, 1.0, 0.1, 0.0);
+		for x in 11..90 {
+			let (a, b) = (grade.get(x - 1, n - 1 - 50), grade.get(x, n - 1 - 50));
+			assert!((b - a).abs() <= 0.1 + 1e-3, "x {x}: {a} {b}");
+		}
 	}
 	#[test]
 	fn stamp_adds_or_raises() {

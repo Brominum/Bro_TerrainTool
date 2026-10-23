@@ -5,7 +5,7 @@ import { TransformControls } from "three/examples/jsm/controls/TransformControls
 import type { FillResult } from "./data";
 import type { ModelLibrary } from "./models";
 import { formatLine, joinLines, parseObjectText } from "./objtext";
-import { inside } from "./shapes";
+import { inside, segDist } from "./shapes";
 import { ObjectStore, type Change, type Fill, type Snapshot } from "./store";
 import { fromText, fromThree, matrixOf, moveOrigin, toText } from "./transform";
 import type { Viewer } from "./viewer";
@@ -301,6 +301,39 @@ export class Editor {
 			const [x, y] = [st.t[id * 12 + 9], st.t[id * 12 + 11]];
 			if (x < x0 || x > x1 || y < y0 || y > y1 || !st.editable(id) || !inside(ring, x, y)) continue;
 			changes.push({ id, before: st.snapshot(id), after: null });
+		}
+		const gone = new Set(changes.map((c) => c.id));
+		this.select([...this.selection].filter((id) => !gone.has(id)));
+		this.commit(changes);
+		return changes.length;
+	}
+
+	// Delete the editable objects near shapes as one undo step: within `dist` meters of a line (its points), or inside a polygon
+	// (`ring`) or within `dist` of its edge. The segments go into a grid, so each object checks only the segments near it.
+	// Returns the number of deleted objects.
+	deleteNear(items: { points: number[][]; dist: number; ring: boolean }[]): number {
+		const st = this.store;
+		const G = Math.max(25, ...items.map((x) => x.dist * 2));
+		const grid = new Map<number, { a: number[]; b: number[]; dist: number }[]>();
+		const key = (cx: number, cy: number) => cx * 100003 + cy;
+		for (const it of items) {
+			const p = it.ring ? [...it.points, it.points[0]] : it.points.length === 1 ? [it.points[0], it.points[0]] : it.points;
+			for (let i = 0; i + 1 < p.length; i++) {
+				const [a, b] = [p[i], p[i + 1]];
+				const [x0, x1, y0, y1] = [Math.min(a[0], b[0]) - it.dist, Math.max(a[0], b[0]) + it.dist, Math.min(a[1], b[1]) - it.dist, Math.max(a[1], b[1]) + it.dist];
+				for (let cx = Math.floor(x0 / G); cx <= Math.floor(x1 / G); cx++)
+					for (let cy = Math.floor(y0 / G); cy <= Math.floor(y1 / G); cy++) (grid.get(key(cx, cy)) ?? grid.set(key(cx, cy), []).get(key(cx, cy))!).push({ a, b, dist: it.dist });
+			}
+		}
+		const rings = items
+			.filter((x) => x.ring && x.points.length > 2)
+			.map((x) => ({ r: x.points, box: x.points.reduce((b, p) => [Math.min(b[0], p[0]), Math.min(b[1], p[1]), Math.max(b[2], p[0]), Math.max(b[3], p[1])], [Infinity, Infinity, -Infinity, -Infinity]) }));
+		const changes: Change[] = [];
+		for (const id of st.ids()) {
+			const [x, y] = [st.t[id * 12 + 9], st.t[id * 12 + 11]];
+			const segs = grid.get(key(Math.floor(x / G), Math.floor(y / G)));
+			const near = segs?.some((s) => segDist(x, y, s.a, s.b) <= s.dist) || rings.some(({ r, box }) => x >= box[0] && y >= box[1] && x <= box[2] && y <= box[3] && inside(r, x, y));
+			if (near && st.editable(id)) changes.push({ id, before: st.snapshot(id), after: null });
 		}
 		const gone = new Set(changes.map((c) => c.id));
 		this.select([...this.selection].filter((id) => !gone.has(id)));

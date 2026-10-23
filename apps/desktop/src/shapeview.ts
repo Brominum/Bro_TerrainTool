@@ -224,6 +224,23 @@ export class ShapeEditor {
 		});
 	}
 
+	// The shapes selected in the list and in the view.
+	selectedShapes(): Shape[] {
+		const ids = new Set(this.picked);
+		if (this.selected !== null) ids.add(this.selected);
+		return this.shapes.filter((s) => ids.has(s.id) && !s.deleted);
+	}
+
+	// Delete the objects near the selected shapes (one undo step): within `dist` meters of a line, of a road edge (half the road
+	// width is added), of a point, or of a polygon edge, and inside polygons. Returns the number of deleted objects.
+	clearNear(dist: number): number {
+		const items = this.selectedShapes().map((s) => {
+			const road = s.kind === "line" ? this.roads.get(roadId(s) ?? -1) : undefined;
+			return { points: s.kind === "point" ? s.points : curve(s, 2), dist: dist + (road ? road.width / 2 : 0), ring: s.kind === "polygon" };
+		});
+		return items.length ? this.ed.deleteNear(items) : 0;
+	}
+
 	// Rename a shape group (one undo step). The hidden, locked, and active settings go with it.
 	renameGroup(from: string, to: string) {
 		if (!to || to === from) return;

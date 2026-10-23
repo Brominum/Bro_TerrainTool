@@ -4,7 +4,7 @@
 // Mouse: left paints with the tool, right or middle drag pans, wheel zooms. Keys: [ and ] brush size, Ctrl+Z, Ctrl+Y,
 // Enter closes the polygon, Backspace removes its last point, Escape cancels it.
 // Satellite: Ctrl+click picks the color (color tool), Alt+click sets the clone source.
-import { maskEndStroke, maskFill, maskPaint, maskPolygon, maskRegion, maskUndo, satEndStroke, satPaint, satPick, satRegion, satUndo, type MaskInfo, type Rect, type SatTool } from "./data";
+import { maskEndStroke, maskFill, maskPaint, maskPolygon, maskRegion, maskUndo, satEndStroke, satPaint, satAdjust, satPick, satRegion, satUndo, type MaskInfo, type SatAdjust, type Rect, type SatTool } from "./data";
 
 export type MaskTool = "brush" | "erase" | "fill" | "polygon" | "lasso";
 const TILE = 512;
@@ -244,6 +244,11 @@ export class MaskView {
 		this.version++;
 		this.onChange?.();
 		this.redraw();
+	}
+
+	// Change the colors of the whole satellite image (one undo step of the satellite image).
+	adjustSat(a: SatAdjust): Promise<unknown> {
+		return this.job(() => satAdjust(a), this.satTiles);
 	}
 
 	undo(redo: boolean) {
