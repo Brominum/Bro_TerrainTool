@@ -7,6 +7,7 @@ import type { ObjectStore } from "./store";
 import { DEFAULT_ENV, fogUniforms, groundUniforms, sunAt, withFog, type Environment } from "./env";
 import { Post } from "./post";
 import { toThree } from "./transform";
+import { Clutter, type ClutterItem } from "./clutter";
 
 // Cells on each side of one terrain chunk at full detail.
 const CHUNK = 256;
@@ -268,6 +269,14 @@ export class Viewer {
 	private maskAlpha = 0;
 	private preview?: THREE.Points;
 	private objects = new THREE.Group();
+	private clutter = new Clutter({
+		heightAt: (x, y) => this.meshHeightAt(x, y),
+		ids: () => {
+			const t = this.terrain;
+			const img = (detailUniforms.uIds.value as THREE.DataTexture).image;
+			return t && img.data ? { w: img.width, h: img.height, data: img.data as Uint8Array, size: t.ncols * t.cell } : null;
+		},
+	});
 	// Sea at 0 m (Arma 3 sea level). A square of 5 map sizes around the map, transparent so that the ground below shows.
 	private sea = new THREE.Mesh(
 		new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
@@ -314,7 +323,7 @@ export class Viewer {
 		this.scene.background = new THREE.Color();
 		this.sun.castShadow = true;
 		this.sun.shadow.mapSize.set(4096, 4096);
-		this.scene.add(this.sun, this.sun.target, this.hemi);
+		this.scene.add(this.sun, this.sun.target, this.hemi, this.clutter.group);
 		this.post = new Post(this.renderer, this.scene, this.camera);
 		this.renderer.info.autoReset = false;
 		this.setEnvironment(DEFAULT_ENV);
@@ -371,6 +380,7 @@ export class Viewer {
 
 	setTerrain(t: Terrain) {
 		this.terrain = t;
+		this.clutter.dirty();
 		for (const c of this.chunks) this.scene.remove(c.mesh);
 		this.lods.forEach((g) => g.dispose());
 		this.heightTex?.dispose();
@@ -460,6 +470,7 @@ export class Viewer {
 		const t = this.terrain;
 		const tex = this.heightTex;
 		if (!t || !tex) return;
+		this.clutter.dirty();
 		const w = r[2] - r[0];
 		for (let row = r[1]; row < r[3]; row++) {
 			t.heights.set(v.subarray((row - r[1]) * w, (row - r[1] + 1) * w), row * t.ncols + r[0]);
@@ -580,7 +591,13 @@ export class Viewer {
 			}
 		}
 		tex.needsUpdate = true;
+		this.clutter.dirty();
 		this.redraw();
+	}
+
+	// Clutter of each ground detail layer (see clutter.ts), null for none. It shows with the ground detail.
+	setClutter(c: { layers: ClutterItem[][]; grid?: number | null } | null, lib?: ModelLibrary) {
+		this.clutter.set(c, lib);
 	}
 
 	// Show the layer mask over the terrain with an opacity from 0 to 1. Null removes it. The mask covers the terrain like the satellite image.
@@ -1002,6 +1019,8 @@ export class Viewer {
 		this.move(dt);
 		this.updateChunks();
 		this.updateObjects();
+		const p = this.camera.position;
+		this.clutter.update(p.x, -p.z, this.env.clutterEnd, this.detailReady && this.env.detail && !this.ortho);
 		this.updateSun();
 		// The post effects draw more than once in a frame, so the triangle count is reset here and not after each draw.
 		this.renderer.info.reset();

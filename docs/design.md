@@ -446,7 +446,7 @@ I checked the four tiles and their RVMAT files. Definitions for the sample: T = 
 - **Scope.** The scope is large. Build in milestone order. Each milestone must work alone.
 - **WRP writer.** The format is not officially documented. This is the largest technical risk. The heights are decoded. The 16-bit data and the object records are not. Mitigation: write a reader first (M0). Use TB-made samples. Compare byte by byte.
 - **Tiles.** The tool writes the tiles and RVMAT files. The layout is verified with two 2 x 2 samples. The target map has 121 tiles for each image. No large map has been tested.
-- **Road method.** Decided and done (M8, M9): `roads.shp` with an `ID` field and `RoadsLib.cfg`, in map coordinates.
+- **Road method.** Decided and done (M8, M9): `roads.shp` with an `ID` field and `RoadsLib.cfg`, in TB coordinates (x + 200000, y + 0; verified with a working roads.shp of the user).
 - **ODOL parsing.** The format is complex. Samples exist (MLOD and ODOL version 75). Mitigation: parse the MLOD first. Use the MLOD as the truth for the ODOL parser. Use the bounding-box fallback.
 - **TML format.** Three samples are decoded (section 5). The effect of AutoCenter and the shift fields is not verified. TML is optional.
 - **Object rotation and z.** The samples have only yaw. Pitch and roll are always 0. The rotation order is not verified. The user tests it later (decision of 23 Oct 2026). Fences and walls on slopes need it.

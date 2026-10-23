@@ -132,8 +132,9 @@ export function GameExport({ settings: s, onChange, store, shapes, terrain, laye
 	const tb = (id: number) => `${store.models[store.model[id]]} (${store.layers[store.layer[id]].name}) at ${(store.t[id * 12 + 9] + (terrain?.xll ?? 0)).toFixed(1)}, ${(store.t[id * 12 + 11] + (terrain?.yll ?? 0)).toFixed(1)}`;
 	// TB places the WRP at the corner of its map frame. A heightmap with another corner moves the map against the TB coordinates.
 	const corner = frame && terrain && (Math.abs(frame[0] - terrain.xll) > 0.01 || Math.abs(frame[1] - terrain.yll) > 0.01);
-	// The game reads roads.shp in map coordinates (0 to the map size), without the TB offset of 200000.
-	const roads = roadShapes(shapes, 0, 0);
+	// The game reads roads.shp in TB coordinates: x + 200000, y + 0 (the TB map frame). Verified with the user's working roads.shp of
+	// bro_laguna (x 200680 to 220473). The export without the offset (map coordinates) gave roads that did not work.
+	const roads = roadShapes(shapes, 200000, 0);
 	const missing = [!terrain && "a heightmap", !mask && "a mask", !layersCfg && "the layers.cfg of the mask", !s.wrp && "the WRP file", !s.layersDir && "the layers folder", !s.prefix.trim() && "the layers game path", s.roads && roads.length && !s.roadsDir && "the roads folder", mask && s.autoOverlap && !best && `a tile size and an overlap that fit (the texture layer cell of ${+cellPx.toFixed(3)} px must divide the mask of ${mask.width} px)`].filter(Boolean);
 	const pick = async (key: "wrp" | "layersDir" | "roadsDir" | "imageToPaa") => {
 		const p =
