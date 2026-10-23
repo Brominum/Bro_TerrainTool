@@ -112,6 +112,8 @@ const DETAIL_MAX = 10;
 // shortcut: the tile size and the fade are guesses, not measured in the game. Make them settings if they look wrong.
 const MID_TILE = 40;
 const MID_FADE = [800, 2000];
+// Opacity of the mid detail (1 was too strong for the user).
+const MID_OPACITY = 0.6;
 const DETAIL_COMMON = /* glsl */ `
 uniform float uDetailOn;
 uniform sampler2D uIds;
@@ -129,7 +131,9 @@ ${Array.from({ length: DETAIL_MAX }, (_, i) => `	if (id == ${i}) return textureG
 const DETAIL_COLOR = /* glsl */ `
 if (uDetailOn > 0.5 && uMidOn > 0.5) {
 	// Mid detail: an overlay on the satellite image, 0.5 grey changes nothing (x 2 in gamma space is x 2^2.2 in linear space).
-	float mf = 1.0 - smoothstep(${MID_FADE[0].toFixed(1)}, ${MID_FADE[1].toFixed(1)}, length(vViewPosition));
+	// It fades in linearly while the ground detail fades out, and fades out far away.
+	float vd = length(vViewPosition);
+	float mf = clamp((vd - uDetailFade.x) / (uDetailFade.y - uDetailFade.x), 0.0, 1.0) * (1.0 - smoothstep(${MID_FADE[0].toFixed(1)}, ${MID_FADE[1].toFixed(1)}, vd)) * ${MID_OPACITY.toFixed(2)};
 	base *= mix(vec3(1.0), texture(uMid, vWorld / ${MID_TILE.toFixed(1)}).rgb * 4.595, mf);
 }
 if (uDetailOn > 0.5) {
