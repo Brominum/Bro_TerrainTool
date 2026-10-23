@@ -107,6 +107,8 @@ struct LayerDetail {
 	missing: Vec<String>,
 	/// The mid detail texture (midDetailTexture of the world in the map config.cpp, else the vanilla one).
 	mid: String,
+	/// The clutter of each layer (CfgSurfaces in the map config.cpp), none without a config.cpp.
+	clutter: Option<terrain_core::clutter::LayerClutter>,
 }
 
 /// The ground detail textures of layers.cfg for the 3D view. The layer RVMAT files are found in the model folders.
@@ -126,14 +128,20 @@ async fn layer_detail(layers_cfg: String, models: State<'_, Models>) -> Result<L
 	let first = mats.first().cloned().flatten();
 	// The map config.cpp is in the folder of layers.cfg or in a parent folder (bro_laguna: data\Layers.cfg and config.cpp).
 	let config = Path::new(&layers_cfg).ancestors().skip(1).take(3).map(|d| d.join("config.cpp")).find(|p| p.is_file());
-	let mid = config
-		.and_then(|p| std::fs::read_to_string(p).ok())
-		.and_then(|t| terrain_core::cfg::parse(&t).ok())
+	let text = config.and_then(|p| std::fs::read_to_string(p).ok());
+	let mid = text
+		.as_deref()
+		.and_then(|t| terrain_core::cfg::parse(t).ok())
 		.and_then(|c| c.class("CfgWorlds").and_then(|w| w.classes().filter_map(|w| w.str("midDetailTexture")).last().map(str::to_string)))
 		.unwrap_or_else(|| "a3\\map_data\\middle_mco.paa".into());
+	let co: Vec<String> = mats.iter().map(|m| m.as_ref().map_or(String::new(), |m| m.co.clone())).collect();
+	// A surface matches the _co texture or the RVMAT file name of a layer.
+	let files: Vec<Vec<String>> = co.iter().zip(&cfg.layers).map(|(c, l)| vec![c.clone(), l.material.clone()]).collect();
+	let clutter = text.and_then(|t| terrain_core::clutter::layer_clutter(&t, &files).map_err(|e| missing.push(format!("clutter: config.cpp ({e})"))).ok());
 	Ok(LayerDetail {
 		mid,
-		co: mats.iter().map(|m| m.as_ref().map_or(String::new(), |m| m.co.clone())).collect(),
+		clutter,
+		co,
 		palette: cfg.palette.iter().map(|p| p.1).collect(),
 		diffuse: first.as_ref().map_or(1.0, |m| m.diffuse),
 		repeat: first.as_ref().map_or(5.0, |m| m.repeat),

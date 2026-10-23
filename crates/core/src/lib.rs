@@ -6,6 +6,7 @@ pub const CANCELLED: &str = "cancelled";
 pub mod alb;
 pub mod asc;
 pub mod cfg;
+pub mod clutter;
 pub mod fill;
 pub mod game;
 pub mod height;

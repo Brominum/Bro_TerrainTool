@@ -712,6 +712,7 @@ export function App() {
 		if (!v) return;
 		paletteLayer.current = null;
 		v.setDetail(null);
+		v.setClutter(null);
 		const cfg = cfgPath.current;
 		if (!mask || !library || !cfg) return;
 		(async () => {
@@ -726,6 +727,7 @@ export function App() {
 			const mid = await library.texture(d.mid);
 			if (typeof mid === "string") d.missing.push(`mid detail: ${d.mid} (${mid})`);
 			v.setDetail({ textures, scale: d.repeat / layerSize, diffuse: d.diffuse, mid: typeof mid === "string" ? null : mid });
+			v.setClutter(d.clutter, library);
 			await update3d(mask3d);
 			if (d.missing.length) setError(`Ground detail without: ${d.missing.join(", ")}`);
 		})().catch((e) => setError(String(e)));
@@ -1071,6 +1073,7 @@ export function App() {
 					<label title="The ground textures of layers.cfg near the camera (from the mask), the satellite image further away. Needs the mask and the layer RVMAT files in the model folders."><input type="checkbox" checked={env.detail} onChange={(e) => envSet({ detail: e.target.checked })} />Show</label>
 					<label title="The ground detail textures are full up to this distance (meters), then fade to the satellite image">From m <NumInput value={env.detailStart} onChange={(v) => envSet({ detailStart: Math.max(0, v) })} step={5} min={0} /></label>
 					<label title="The ground detail textures are gone at this distance (meters)">To m <NumInput value={env.detailEnd} onChange={(v) => envSet({ detailEnd: Math.max(1, v) })} step={5} min={1} /></label>
+					<label title="The clutter of the ground layers (CfgSurfaces and CfgSurfaceCharacters in the map config.cpp) shows to this distance (meters). 0: no clutter.">Clutter to m <NumInput value={env.clutterEnd} onChange={(v) => envSet({ clutterEnd: Math.max(0, Math.min(200, v)) })} step={10} min={0} /></label>
 				</div>
 			</Group>
 			<Group label="Fog (as in 3DEN)">
