@@ -1,0 +1,31 @@
+{
+	"name": "terrain-tool",
+	"private": true,
+	"version": "0.1.0",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "tsc --noEmit && vite build",
+		"tauri": "tauri",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@tauri-apps/api": "2.12.4",
+		"@tauri-apps/plugin-dialog": "2.8.3",
+		"react": "19.3.1",
+		"react-dom": "19.3.1",
+		"remixicon": "^4.6.0",
+		"three": "0.186.1"
+	},
+	"devDependencies": {
+		"@tauri-apps/cli": "2.12.4",
+		"@types/node": "26.6.5",
+		"@types/react": "19.3.0",
+		"@types/react-dom": "19.3.0",
+		"@types/three": "0.186.0",
+		"@vitejs/plugin-react": "6.1.2",
+		"typescript": "7.0.2",
+		"vite": "8.3.5",
+		"vitest": "5.0.5"
+	}
+}

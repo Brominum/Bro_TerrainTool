@@ -1,0 +1,7 @@
+[package]
+name = "terrain_cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+terrain_core = { path = "../core" }

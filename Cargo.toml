@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/cli", "apps/desktop/src-tauri"]
+# The desktop app needs the web build first. npm builds it, see README.md.
+default-members = ["crates/core", "crates/cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+# Parse large files fast also in debug builds (tauri dev).
+[profile.dev.package.terrain_core]
+opt-level = 3
+
+# Release build (the installer): smaller and a little faster. One code unit and thin LTO make the build slower, not the program.
+# Panics stay "unwind": a panic in a worker job becomes an error message, not a crash.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

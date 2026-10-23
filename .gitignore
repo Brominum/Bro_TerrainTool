@@ -1,0 +1,7 @@
+# Build output
+target/
+/out/
+# Sample and test data (private files and game assets). The tests skip what is missing.
+/tests/fixtures/
+# Session notes, not part of the app
+/handoff.md
