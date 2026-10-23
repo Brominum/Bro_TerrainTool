@@ -4,6 +4,28 @@
 // shortcut: the clutter stands upright (the game tilts it with the terrain) and has no wind. Add the tilt if it looks wrong on slopes.
 import * as THREE from "three";
 import type { Model, ModelLibrary } from "./models";
+import { withFog } from "./env";
+
+// Clutter material: the texture of the model material, lit with an up normal (as the terrain). The normals of grass blades point to the
+// sides, and the back faces of DoubleSide blades got the reversed normal, so most of the clutter was dark. The second faceDirection
+// multiply cancels the reversal of Three.js, so both faces use the up normal.
+const clutterMaterials = new WeakMap<THREE.Material, THREE.Material>();
+function clutterMaterial(src: THREE.Material): THREE.Material {
+	const map = (src as THREE.MeshLambertMaterial).map;
+	if (!map) return src;
+	let m = clutterMaterials.get(src);
+	if (!m) {
+		m = withFog(new THREE.MeshLambertMaterial({ map, alphaTest: Math.max(0.5, src.alphaTest), side: THREE.DoubleSide }));
+		m.onBeforeCompile = ((prev) => (sh: THREE.WebGLProgramParametersWithUniforms, r: THREE.WebGLRenderer) => {
+			sh.vertexShader = sh.vertexShader.replace("#include <beginnormal_vertex>", "vec3 objectNormal = vec3(0.0, 1.0, 0.0);");
+			sh.fragmentShader = sh.fragmentShader.replace("#include <normal_fragment_begin>", "#include <normal_fragment_begin>\n#ifdef DOUBLE_SIDED\nnormal *= faceDirection;\n#endif");
+			prev(sh, r);
+		})(m.onBeforeCompile.bind(m));
+		m.customProgramCacheKey = () => "clutter";
+		clutterMaterials.set(src, m);
+	}
+	return m;
+}
 
 export interface ClutterItem {
 	model: string;
@@ -124,7 +146,7 @@ export class Clutter {
 					this.group.remove(kind.mesh);
 					kind.mesh.dispose();
 				}
-				kind.mesh = new THREE.InstancedMesh(kind.model.geometry, kind.model.materials, Math.max(64, count * 2));
+				kind.mesh = new THREE.InstancedMesh(kind.model.geometry, kind.model.materials.map(clutterMaterial), Math.max(64, count * 2));
 				kind.mesh.frustumCulled = false;
 				// No shadows: the thin clutter got dark shadow acne from the sun shadow map.
 				kind.mesh.receiveShadow = false;
